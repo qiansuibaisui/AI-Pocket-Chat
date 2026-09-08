@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 临时共存包：仅 debug 构建覆盖显示名，不影响 main 源集（任务后还原）。 -->
+<resources>
+    <string name="app_name">口袋聊·改</string>
+</resources>

@@ -87,6 +87,10 @@ android {
     }
 
     buildTypes {
+        // 临时共存包：debug 加 .mod 后缀，可与正式包并装（release 的 applicationId 不变）。
+        debug {
+            applicationIdSuffix = ".mod"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
