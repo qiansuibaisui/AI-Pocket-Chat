@@ -14,11 +14,18 @@ plugins {
     // alias(libs.plugins.baselineprofile)  // 暂停：1.4.1 不兼容 AGP 9.2.1·1.5.0 仅 alpha（见 settings.gradle.kts）
 }
 
-// 正式 release 签名：本机存在 keystore.properties(gitignored) 时启用真签名，
-// 否则回退 AGP 默认 debug 签名——保证其他 session 编译 / 别人 clone 不受影响。
-val keystorePropertiesFile = rootProject.file("keystore.properties")
+// 正式 release 签名：存在 keystore.properties 时启用真签名，否则回退 AGP 默认 debug 签名——
+// 保证其他 session 编译 / 别人 clone 不受影响。
+// [zCODE] properties 查找顺序（仓库外优先）：-PkeystoreProps=路径 > 环境变量 AICHAT_KEYSTORE_PROPERTIES
+// > 仓库外固定路径 D:/Android/keystores/keystore.properties > 仓库根 keystore.properties（原作者位置）。
+val keystorePropertiesFile: File? = listOfNotNull(
+    providers.gradleProperty("keystoreProps").orNull?.let(::File),
+    System.getenv("AICHAT_KEYSTORE_PROPERTIES")?.let(::File),
+    File("D:/Android/keystores/keystore.properties"),
+    rootProject.file("keystore.properties"),
+).firstOrNull { it.exists() }
 val keystoreProperties = Properties().apply {
-    if (keystorePropertiesFile.exists()) keystorePropertiesFile.inputStream().use { load(it) }
+    keystorePropertiesFile?.inputStream()?.use { load(it) }
 }
 
 // 端侧 ONNX Runtime 坐标——单点声明，给 implementation 依赖与 16 KB 对齐守卫（verify16kbNativeAlignment）共用，
@@ -76,7 +83,7 @@ android {
 
     signingConfigs {
         // keystore.properties 存在时创建正式 release 签名（实体 .jks 在仓库外 ~/keystores/，绝不进库）。
-        if (keystorePropertiesFile.exists()) {
+        if (keystorePropertiesFile != null) {
             create("release") {
                 storeFile = File(keystoreProperties.getProperty("storeFile"))
                 storePassword = keystoreProperties.getProperty("storePassword")
@@ -87,16 +94,17 @@ android {
     }
 
     buildTypes {
-        // 临时共存包：debug 加 .mod 后缀，可与正式包并装（release 的 applicationId 不变）。
+        // 共存包：debug/release 一律加 .mod 后缀，与作者版（com.situ.aichat）并装；namespace 不动。
         debug {
             applicationIdSuffix = ".mod"
         }
         release {
+            applicationIdSuffix = ".mod"
             isMinifyEnabled = true
             isShrinkResources = true
             // 正式签名：本机有 keystore.properties → 正式 release 证书；否则回退 debug 证书。
             // （GitHub 侧载分发；从 debug 换正式签名后，旧 debug 包需先卸载再装——签名不一致。）
-            signingConfig = if (keystorePropertiesFile.exists())
+            signingConfig = if (keystorePropertiesFile != null)
                 signingConfigs.getByName("release")
             else
                 signingConfigs.getByName("debug")

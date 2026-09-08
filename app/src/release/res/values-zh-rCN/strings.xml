@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 共存包：仅 release 构建覆盖显示名（与 debug 源集同款），避免与原版 launcher 同名混淆。 -->
+<resources>
+    <string name="app_name">口袋聊·改</string>
+</resources>
