@@ -17,6 +17,7 @@ import com.situ.aichat.data.local.dao.OfflineMeetingMemoryDao
 import com.situ.aichat.data.local.dao.OpenLoopDao
 import com.situ.aichat.data.local.dao.OurDayDao
 import com.situ.aichat.data.local.dao.PromiseDao
+import com.situ.aichat.data.local.dao.StoryStateDao
 import com.situ.aichat.data.local.dao.MilestoneDao
 import com.situ.aichat.data.local.dao.MomentDao
 import com.situ.aichat.data.local.dao.NotificationDeliveryDao
@@ -53,6 +54,8 @@ import com.situ.aichat.data.local.entity.MessageEntity
 import com.situ.aichat.data.local.entity.OfflineMeetingMemoryEntity
 import com.situ.aichat.data.local.entity.OpenLoopEntity
 import com.situ.aichat.data.local.entity.OurDayEntity
+import com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity
+import com.situ.aichat.data.local.entity.StoryEventLedgerEntity
 import com.situ.aichat.data.local.entity.PromiseEntity
 import com.situ.aichat.data.local.entity.MilestoneEntity
 import com.situ.aichat.data.local.entity.MonthlyReviewEntity
@@ -152,8 +155,12 @@ import com.situ.aichat.data.local.entity.WorldUserResidentEntity
         UserStoryTemplateEntity::class,
         // 「我们的日子」卷一《沉淀》（总图纸 docs/handoff/2026-09-02-我们的日子-总图纸.md §3.1）：一天 × 一角色的事实快照 + 手记（无 FK·手动级联清）。
         OurDayEntity::class,
+        // [zCODE] P1·第2项 锚点中央登记（评审点1）：剧情锚点快照（append-only·唯一索引 (relatedMessageUUID, sourceRaw) 幂等）
+        // + 已完成事件账本（唯一索引 (characterUuid, eventKey)）。无 FK·手动级联清；写入口唯一 = StoryStateRepository。
+        StoryAnchorSnapshotEntity::class,
+        StoryEventLedgerEntity::class,
     ],
-    version = 49,
+    version = 50,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -189,6 +196,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun openLoopDao(): OpenLoopDao
     abstract fun promiseDao(): PromiseDao
     abstract fun ourDayDao(): OurDayDao
+    // [zCODE] P1·第2项：锚点中央登记两表（写入口唯一 = StoryStateRepository）。
+    abstract fun storyStateDao(): StoryStateDao
     abstract fun userStoryTemplateDao(): UserStoryTemplateDao
 
     companion object {

@@ -116,6 +116,7 @@ class ChatViewModel @Inject constructor(
     private val conversationRepo: ConversationRepository,
     private val characterRepo: CharacterRepository,
     private val openLoopRepository: com.situ.aichat.data.repository.OpenLoopRepository,
+    private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项：锚点中央登记
     private val promiseRepository: com.situ.aichat.data.repository.PromiseRepository,
     private val promiseLedgerService: com.situ.aichat.promise.PromiseLedgerService,
     private val ourDayRepository: com.situ.aichat.data.repository.OurDayRepository,
@@ -466,6 +467,7 @@ class ChatViewModel @Inject constructor(
         ttsService = ttsService,
         offlineMeetingService = offlineMeetingService,
         calendarHandler = calendarHandler,
+        storyStateRepository = storyStateRepository, // [zCODE] P1·第2项：锚点中央登记写入口
         errorFlow = _error,
         isDelivering = _isDelivering,
         pendingAssistantSlot = _pendingAssistantSlot,

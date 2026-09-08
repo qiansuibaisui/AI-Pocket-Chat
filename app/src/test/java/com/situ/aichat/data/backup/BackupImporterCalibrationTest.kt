@@ -63,6 +63,7 @@ class BackupImporterCalibrationTest {
             promiseDao = mockk(relaxed = true),
             userStoryTemplateDao = mockk(relaxed = true),
             ourDayDao = mockk(relaxed = true),
+            storyStateDao = mockk(relaxed = true), // [zCODE] P1·第2项
             settingsRepo = mockk(relaxed = true),
             mediaRestorer = BackupMediaRestorer(ctx), // 真件（只落盘不碰库）：空包无媒体条目 → 一次都不会被调用
             archetypeCalibrator = calibrator,

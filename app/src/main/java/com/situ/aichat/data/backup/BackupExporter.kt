@@ -73,6 +73,8 @@ class BackupExporter @Inject constructor(
     private val promiseDao: com.situ.aichat.data.local.dao.PromiseDao,
     private val userStoryTemplateDao: com.situ.aichat.data.local.dao.UserStoryTemplateDao,
     private val ourDayDao: com.situ.aichat.data.local.dao.OurDayDao,
+    // [zCODE] P1·第2项：锚点中央登记两全局段。
+    private val storyStateDao: com.situ.aichat.data.local.dao.StoryStateDao,
     private val settingsRepo: SettingsRepository,
 ) {
     private val json = Json {
@@ -134,6 +136,8 @@ class BackupExporter @Inject constructor(
         val userStoryTemplates = collectUserStoryTemplates(userStoryTemplateDao).also { step() }
         // 「我们的日子」卷一：our_days 全局段（图纸 §3.5·顶层·剥 embedding·恢复靠 characterUuid 幽灵过滤）。
         val ourDays = collectOurDays(ourDayDao).also { step() }
+        // [zCODE] P1·第2项：锚点中央登记两全局段（顶层·恢复靠 characterUuid 幽灵过滤）。
+        val (storyAnchors, storyEvents) = collectStoryState(storyStateDao).also { step() }
 
         val pkg = BackupPackage(
             manifest = BackupManifest(
@@ -170,6 +174,8 @@ class BackupExporter @Inject constructor(
             promises = promises,
             userStoryTemplates = userStoryTemplates,
             ourDays = ourDays,
+            storyAnchors = storyAnchors,
+            storyEvents = storyEvents,
         )
         // 卷 A·J7：manifest 直接编码进 zip 条目流——不再先攒完整 String 再复制一份 UTF-8 字节
         //（含 embedding 的大库那两份复制能到几十 MB）。序列化配置/字段/输出内容零变（同 Json 实例、
@@ -402,7 +408,7 @@ class BackupExporter @Inject constructor(
 
     private companion object {
         /** 导出 COLLECT 进度的全局段数（朋友圈/日记/月度回顾/故事/礼物/红包/贴纸/兑换码/流水台账/用户钱包/用户资料/约定见面/世界书/世界/见面回忆/承诺账本/我的模板/我们的日子）。 */
-        const val GLOBAL_SEGMENT_COUNT = 18
+        const val GLOBAL_SEGMENT_COUNT = 20 // [zCODE] P1·第2项：18→20（锚点快照 + 事件账本）
 
         const val TAG_EXPORT = "BackupExport"
 

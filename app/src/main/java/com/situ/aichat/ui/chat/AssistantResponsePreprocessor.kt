@@ -7,6 +7,7 @@ import com.situ.aichat.offline.OfflineMeetingAction
 import com.situ.aichat.offline.OfflineMeetingActionType
 import com.situ.aichat.promise.PromiseChatTool
 import com.situ.aichat.promise.PromiseToolAction
+import com.situ.aichat.prompt.AnchorBlockParser
 
 /**
  * 结构化 + 文本标记双轨的**汇合**纯逻辑（1:1 iOS `ChatViewModel+StreamReceiver.preprocessAssistantResponse`
@@ -32,6 +33,8 @@ object AssistantResponsePreprocessor {
         val futureMeetingCandidates: List<MeetingCandidate> = emptyList(),
         /** 文本暗号路解析出的约定记账动作（图纸 2026-09-06）；`[promise]` 标记已从正文剥离，闸门在 handler。 */
         val promiseMarkerActions: List<PromiseToolAction> = emptyList(),
+        /** [zCODE] P1·第2项：对话内锚点块（[场景：…] / 【场景状态】·非破坏性提取，取最后一个=模型最终落点；null=未输出→收尾兜底延续）。正文剥离维持 ReplyParser 既有职责。 */
+        val anchorBlock: AnchorBlockParser.AnchorBlock? = null,
     )
 
     /**
@@ -84,6 +87,9 @@ object AssistantResponsePreprocessor {
         // ── 约定记账文本暗号：同口径无条件剥 [promise]{...}（图纸 2026-09-06 §3.3-A）+ 收动作 ──
         val (responseAfterPromise, promiseMarkerActions) = PromiseChatTool.parseMarkers(responseAfterMeeting)
 
+        // ── [zCODE] P1·第2项：锚点块非破坏性提取（只读不剥，剥离归 ReplyParser；畸形经容错层降级跳过） ──
+        val anchorBlock = AnchorBlockParser.parseLastBlock(fullResponse)
+
         return Result(
             responseAfterPromise,
             calendarActions,
@@ -91,6 +97,7 @@ object AssistantResponsePreprocessor {
             hasOfflineMeetingAction,
             futureMeetingCandidates,
             promiseMarkerActions,
+            anchorBlock,
         )
     }
 

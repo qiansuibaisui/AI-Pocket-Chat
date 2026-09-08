@@ -119,6 +119,7 @@ class ChatReplyDelivererTest {
             ttsService = ttsService,
             offlineMeetingService = offlineMeetingService,
             calendarHandler = calendarHandler,
+            storyStateRepository = mockk(relaxed = true), // [zCODE] P1·第2项（锚点落库 runCatching 容错，不影响既有断言）
             errorFlow = errorFlow,
             isDelivering = isDelivering,
             pendingAssistantSlot = pendingAssistantSlot,

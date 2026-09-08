@@ -78,6 +78,7 @@ class BackupImporterStreamingTest {
             promiseDao = db.promiseDao(),
             userStoryTemplateDao = db.userStoryTemplateDao(),
             ourDayDao = db.ourDayDao(),
+            storyStateDao = db.storyStateDao(), // [zCODE] P1·第2项
             settingsRepo = mockk(relaxed = true),
             mediaRestorer = BackupMediaRestorer(app),
             archetypeCalibrator = mockk(relaxed = true),

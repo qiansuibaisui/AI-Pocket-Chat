@@ -716,6 +716,32 @@ val MIGRATION_48_49 = object : Migration(48, 49) {
     }
 }
 
+/** [zCODE] P1·第2项 锚点中央登记（评审点1·存储层）v49→v50：
+ *  ① 新建 `story_anchor_snapshots`（剧情锚点快照·append-only·索引 characterUuid + 唯一索引
+ *  (relatedMessageUUID, sourceRaw) 幂等——同回合同通道重试/多路径收尾零重复落行）；
+ *  ② 新建 `story_event_ledger`（已完成事件/已执行流程账本·索引 characterUuid + 唯一索引
+ *  (characterUuid, eventKey) 去重）。两表无 FK·手动级联清；写入口唯一 = StoryStateRepository。
+ *  DDL 逐字取自 Room 生成的 50.json createSql（`${TABLE_NAME}` 换真表名），MigrationTest 校验；纯增量·旧表零丢失。 */
+val MIGRATION_49_50 = object : Migration(49, 50) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `story_anchor_snapshots` (`uuid` TEXT NOT NULL, `characterUuid` TEXT NOT NULL, " +
+                "`conversationUuid` TEXT NOT NULL, `eventName` TEXT NOT NULL, `locationRaw` TEXT NOT NULL, `locationKey` TEXT, " +
+                "`motionStateRaw` TEXT NOT NULL, `sourceRaw` TEXT NOT NULL, `effectiveAt` INTEGER NOT NULL, " +
+                "`capturedAt` INTEGER NOT NULL, `relatedMessageUUID` TEXT NOT NULL, PRIMARY KEY(`uuid`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_story_anchor_snapshots_characterUuid` ON `story_anchor_snapshots` (`characterUuid`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_story_anchor_snapshots_relatedMessageUUID_sourceRaw` ON `story_anchor_snapshots` (`relatedMessageUUID`, `sourceRaw`)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `story_event_ledger` (`uuid` TEXT NOT NULL, `characterUuid` TEXT NOT NULL, " +
+                "`conversationUuid` TEXT NOT NULL, `eventKey` TEXT NOT NULL, `description` TEXT NOT NULL, " +
+                "`completedAt` INTEGER NOT NULL, `sourceRaw` TEXT NOT NULL, `relatedMessageUUID` TEXT, PRIMARY KEY(`uuid`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_story_event_ledger_characterUuid` ON `story_event_ledger` (`characterUuid`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_story_event_ledger_characterUuid_eventKey` ON `story_event_ledger` (`characterUuid`, `eventKey`)")
+    }
+}
+
 /** 全部迁移（按序），注入 Room.databaseBuilder().addMigrations(*ALL_MIGRATIONS)。 */
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
@@ -766,4 +792,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_46_47,
     MIGRATION_47_48,
     MIGRATION_48_49,
+    MIGRATION_49_50,
 )

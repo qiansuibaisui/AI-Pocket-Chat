@@ -77,6 +77,7 @@ internal class ChatReplyDeliverer(
     private val ttsService: TtsService,
     private val offlineMeetingService: OfflineMeetingService,
     private val calendarHandler: ChatCalendarActionHandler,
+    private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项：锚点中央登记写入口
     private val errorFlow: MutableStateFlow<String?>,
     private val isDelivering: MutableStateFlow<Boolean>,
     private val pendingAssistantSlot: MutableStateFlow<TypingSlot?>,
@@ -236,6 +237,7 @@ internal class ChatReplyDeliverer(
                 val stored = deliverVoiceReply(stickerNormalized, character, voicePlan, emotionTag, mood.emoji, immediate, dotsAppearMillis)
                 if (stored.isNotEmpty()) {
                     finalizeDelivery(stored)
+                    recordTurnAnchor(character.uuid, pre.anchorBlock, stored)
                     notifyIfNotViewing(character, settings, stored, immediate, isOfflineConversation = isOffline)
                     return DeliveredTurn(stored, deliveredStructuredAction, meetingMarkerCandidates, promiseMarkerActions)
                 }
@@ -248,8 +250,28 @@ internal class ChatReplyDeliverer(
         val stored = deliverTextReply(stickerNormalized, settings, emotionTag, immediate, dotsAppearMillis, offlineSessionId)
         if (stored.isEmpty()) return DeliveredTurn(emptyList(), deliveredStructuredAction, meetingMarkerCandidates, promiseMarkerActions)
         finalizeDelivery(stored)
+        recordTurnAnchor(character.uuid, pre.anchorBlock, stored)
         notifyIfNotViewing(character, settings, stored, immediate, isOfflineConversation = isOffline)
         return DeliveredTurn(stored, deliveredStructuredAction, meetingMarkerCandidates, promiseMarkerActions)
+    }
+
+    /**
+     * [zCODE] P1·第2项 写入通道①：回合收尾落锚点（幂等键 = stored.last().messageUUID）。
+     * - 有锚点块 → 落 dialog_block 行；无 → 兜底延续上一快照（effectiveAt 原样携带·换模型不断链）；
+     * - 失败绝不影响投递（runCatching 吞 + 记日志——锚点是增强数据，不是回复本体）；
+     * - 卡片/日历独占回复（无正文 early-return 路径）不记录：无 stored 消息即无幂等键，且模型未叙事、位置大概率未述，
+     *   交下一回合 carryover。
+     */
+    private suspend fun recordTurnAnchor(characterUuid: String, anchor: com.situ.aichat.prompt.AnchorBlockParser.AnchorBlock?, stored: List<com.situ.aichat.data.local.entity.MessageEntity>) {
+        val turnEndMessageUuid = stored.lastOrNull()?.messageUUID ?: return
+        runCatching {
+            storyStateRepository.recordTurnAnchor(
+                characterUuid = characterUuid,
+                conversationUuid = conversationUuid,
+                anchor = anchor,
+                turnEndMessageUuid = turnEndMessageUuid,
+            )
+        }.onFailure { Log.w(TAG, "锚点落库失败（不影响投递）: ${it.message}") }
     }
 
     /**

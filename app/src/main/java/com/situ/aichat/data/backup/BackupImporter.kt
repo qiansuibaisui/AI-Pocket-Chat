@@ -81,6 +81,8 @@ class BackupImporter @Inject constructor(
     private val promiseDao: com.situ.aichat.data.local.dao.PromiseDao,
     private val userStoryTemplateDao: com.situ.aichat.data.local.dao.UserStoryTemplateDao,
     private val ourDayDao: com.situ.aichat.data.local.dao.OurDayDao,
+    // [zCODE] P1·第2项：锚点中央登记两全局段（老备份段缺失 = 留空从零建档）。
+    private val storyStateDao: com.situ.aichat.data.local.dao.StoryStateDao,
     private val settingsRepo: SettingsRepository,
     // 卷 A：媒体逐条读→重存→弃（含 zip 键路由与跳过键收集，从本类原样搬出）。
     private val mediaRestorer: BackupMediaRestorer,
@@ -225,6 +227,7 @@ class BackupImporter @Inject constructor(
                 pkg.redeemCodeUsages != null || pkg.currencyTransactions != null ||
                 pkg.futureAppointments != null || pkg.worldBooks != null || pkg.world != null ||
                 pkg.promises != null || pkg.userStoryTemplates != null || pkg.ourDays != null ||
+                pkg.storyAnchors != null || pkg.storyEvents != null || // [zCODE] P1·第2项（老备份 null → 不算全局数据，两表留空从零建档）
                 pkg.userWallet != null || pkg.userProfile != null || pkg.appSettings != null,
         )
     }
@@ -363,6 +366,8 @@ class BackupImporter @Inject constructor(
                 restoreUserStoryTemplates(userStoryTemplateDao, pkg.userStoryTemplates)
                 // 「我们的日子」卷一：our_days（顶层全局段·characterUuid 幽灵行跳过·uuid REPLACE 幂等·embedding 落 null·图纸 §3.5）。
                 restoreOurDays(ourDayDao, pkg.ourDays, existingUuids)
+                // [zCODE] P1·第2项：锚点快照 + 事件账本（characterUuid 幽灵行跳过·uuid REPLACE 幂等；老备份段缺失 = 留空从零建档）。
+                restoreStoryState(storyStateDao, pkg.storyAnchors, pkg.storyEvents, existingUuids)
                 ImportCounts(imported, overwritten, duplicated, skipped, importedMsgs)
             }
         }

@@ -74,6 +74,10 @@ data class BackupPackage(
     val ourDays: List<OurDayExport>? = null,
     /** 故事「我的模板」（图纸四 §3.2·顶层全局段）：整套创作设定；无幽灵过滤（不挂角色/故事）；uuid REPLACE 幂等。 */
     val userStoryTemplates: List<UserStoryTemplateExport>? = null,
+    /** [zCODE] P1·第2项 锚点快照（顶层全局段·第 19 段）：append-only 历史；恢复靠 characterUuid 幽灵过滤；**老备份（≤18 段）无此字段 → null → 留空从零建档（降级不报错）**。 */
+    val storyAnchors: List<StoryAnchorBackupData>? = null,
+    /** [zCODE] P1·第2项 已完成事件账本（顶层全局段·第 20 段）：恢复靠 characterUuid 幽灵过滤；老备份无此字段 → 留空。 */
+    val storyEvents: List<StoryEventBackupData>? = null,
 )
 
 @Serializable
