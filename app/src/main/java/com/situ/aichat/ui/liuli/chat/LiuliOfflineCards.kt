@@ -82,10 +82,11 @@ internal fun LiuliOfflineInviteCard(
             when (data.responded) {
                 RESPONDED_ACCEPTED -> LiuliStageBodyText("已接受邀约")
                 RESPONDED_DECLINED -> LiuliStageBodyText("已婉拒")
+                RESPONDED_SUPERSEDED -> LiuliStageBodyText("已作废（被更新的邀约替代）") // [zCODE] P1 矛盾守卫回执
                 else -> Unit
             }
         }
-        if (data.responded != RESPONDED_ACCEPTED && data.responded != RESPONDED_DECLINED) {
+        if (data.responded != RESPONDED_ACCEPTED && data.responded != RESPONDED_DECLINED && data.responded != RESPONDED_SUPERSEDED) {
             LiuliCardButtonRow {
                 LiuliCardButton(text = "好呀", prominent = true, onClick = onAccept)
                 LiuliCardButton(
@@ -274,6 +275,7 @@ private fun LiuliStageBodyText(text: String) {
 private const val RESPONDED_ACCEPTED = "accepted"
 private const val RESPONDED_DECLINED = "declined"
 private const val RESPONDED_CONTINUED = "continued"
+private const val RESPONDED_SUPERSEDED = "superseded" // [zCODE] P1 矛盾守卫回执
 
 /** 角色名为空时的兜底称呼（照抄暖陶 F12 的 `"对方"`）。 */
 private const val FALLBACK_NAME = "对方"

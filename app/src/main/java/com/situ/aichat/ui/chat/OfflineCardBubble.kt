@@ -91,6 +91,7 @@ fun OfflineInviteCardBubble(
             when (data.responded) {
                 "accepted" -> RespondedLabel("已接受邀约")
                 "declined" -> RespondedLabel("已婉拒")
+                "superseded" -> RespondedLabel("已作废（被更新的邀约替代）") // [zCODE] P1 矛盾守卫回执
                 else -> Row(
                     Modifier.fillMaxWidth().padding(top = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),

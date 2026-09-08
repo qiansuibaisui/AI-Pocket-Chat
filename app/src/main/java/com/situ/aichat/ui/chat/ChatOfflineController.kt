@@ -121,18 +121,24 @@ internal class ChatOfflineController(
     fun acceptOfflineInvite(messageUuid: String) {
         serialize {
             offlineMeetingService.markInviteResponded(messageUuid, "accepted")
+            // [zCODE] P1·矛盾守卫：其余未响应邀约卡一并作废（保留最新，防「已接受+已婉拒」并存）。
+            offlineMeetingService.supersedePendingInviteCards(conversationUuid, excludeMessageUuid = messageUuid)
             // 卷一 D2：把被点的那张卡的 uuid 传下去——往回翻点旧卡时不能被「扫最近一张」带进另一场约。
             val sessionId = offlineMeetingService.acceptOfflineInvite(conversationUuid, messageUuid)
             if (sessionId != null) {
                 honorDueAppointmentsSafely(sessionId) // C2：邀约卡进的同一场约也算赴约
-                runAssistantTurn()
+                runOpeningTurnIfAbsent(sessionId)
             }
         }
     }
 
     /** 用户拒绝邀约卡（卡片「下次吧」按钮）：仅置卡片 responded=declined（不进入、不触发，无需串行化）。 */
     fun declineOfflineInvite(messageUuid: String) {
-        scope.launch { offlineMeetingService.markInviteResponded(messageUuid, "declined") }
+        scope.launch {
+            offlineMeetingService.markInviteResponded(messageUuid, "declined")
+            // [zCODE] P1·矛盾守卫：拒绝后其余未响应邀约卡作废（同一逻辑邀约只剩这一个响应态）。
+            offlineMeetingService.supersedePendingInviteCards(conversationUuid, excludeMessageUuid = messageUuid)
+        }
     }
 
     /** 用户在 + 菜单主动发起线下见面（填地点活动后）：进入线下模式 + 触发 AI 开场。 */
@@ -141,9 +147,17 @@ internal class ChatOfflineController(
             val sessionId = offlineMeetingService.startManualOfflineMeeting(conversationUuid, location, activity)
             if (sessionId != null) {
                 honorDueAppointmentsSafely(sessionId) // C2：手动发起的同一场约也算赴约
-                runAssistantTurn()
+                runOpeningTurnIfAbsent(sessionId)
             }
         }
+    }
+
+    /**
+     * [zCODE] P1·开场幂等守卫：本场（sessionId）已生成过开场叙述（存在 assistant 纯文本消息）则不再触发
+     * 开场回合——治「App 被杀后重进 / 恢复流程重复触发开场」的双开场落盘。
+     */
+    private suspend fun runOpeningTurnIfAbsent(sessionId: String) {
+        if (!offlineMeetingService.hasOpeningNarrative(conversationUuid, sessionId)) runAssistantTurn()
     }
 
     /**
@@ -172,7 +186,7 @@ internal class ChatOfflineController(
             if (sessionId != null) {
                 meetingAppointmentStore.markHonored(appointmentUuid, sessionId)
                 honorDueAppointmentsSafely(sessionId) // C2：同窗口的重复/幽灵约定顺手一并核销（幂等）
-                serialize { runAssistantTurn() } // 已打断·isSending 已清 → 开场回合不会被丢
+                serialize { runOpeningTurnIfAbsent(sessionId) } // 已打断·isSending 已清 → 开场回合不会被丢（[zCODE] P1 幂等守卫）
             } else {
                 // 卷一 D1a（拍板⑪）：进不去的唯一常见原因 = **已经在见面中**（enterOfflineMode 幂等返 null）——
                 // 用户正是在赴这场约，绝不能放着不管让 Phase 11 爽约扫描把它判成「你没来」。这里补 markHonored

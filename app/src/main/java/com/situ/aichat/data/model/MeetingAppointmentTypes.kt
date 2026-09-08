@@ -23,7 +23,13 @@ enum class MeetingStatus(val raw: String) {
     MISSED("missed"),
 
     /** 已取消。终态。 */
-    CANCELLED("cancelled");
+    CANCELLED("cancelled"),
+
+    /**
+     * [zCODE] P1·已作废（终态）：短期重复生成的同类邀约被「保留最新」守卫作废（矛盾态防并存）。
+     * 与 cancelled 的语义差：cancelled = 用户显式婉拒；superseded = 系统作废的重复条目（用户从未响应过它）。
+     */
+    SUPERSEDED("superseded");
 
     /**
      * 是否进行中——可被改期 / 取消 / 赴约命中，也是查重比对的范围（终态三者排除在外）。

@@ -110,11 +110,11 @@ internal class ChatMeetingController(
         }
     }
 
-    /** 确认卡「答应」：proposed → confirmed（刷到点通知）。 */
-    fun acceptAppointment(uuid: String) = launchMeetingMutation { meetingProposalCoordinator.confirmFromCard(uuid) }
+    /** 确认卡「答应」：proposed → confirmed（[zCODE] P1 走统一响应入口：幂等 + 同步卡回执 + 24h 兄弟作废守卫；刷到点通知）。 */
+    fun acceptAppointment(uuid: String) = launchMeetingMutation { meetingProposalCoordinator.respondFromCard(uuid, accepted = true) }
 
-    /** 确认卡「先不约」：取消约定（撤到点通知）。 */
-    fun declineAppointment(uuid: String) = launchMeetingMutation { meetingProposalCoordinator.declineFromCard(uuid) }
+    /** 确认卡「先不约」：取消约定（[zCODE] P1 同上统一入口；撤到点通知）。 */
+    fun declineAppointment(uuid: String) = launchMeetingMutation { meetingProposalCoordinator.respondFromCard(uuid, accepted = false) }
 
     /** 「+」菜单「约见面」：用户自填将来见面，跳过确认闸门直接 confirmed（落「已约定」回执卡）+ 排到点通知。 */
     fun startFutureMeeting(scheduledAtMillis: Long, granularity: MeetingTimeGranularity, location: String, activity: String) {

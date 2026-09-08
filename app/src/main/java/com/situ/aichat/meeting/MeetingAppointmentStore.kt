@@ -22,6 +22,8 @@ import javax.inject.Singleton
  *   proposed/confirmed →(取消)→ cancelled。终态不可再流转（纯函数返回 null = 守卫拒绝）——
  *   **唯一例外** = [repairMissedToHonored]（missed→honored·爽约误判自愈·图纸 2026-08-31，仅
  *   [MeetingFulfillmentService] 凭入场标记实证调用）。
+ *   [zCODE] P1 新增 superseded 终态：短期重复生成的待确认兄弟条目被「保留最新」守卫作废
+ *   （[supersedeSiblingProposals]，治「已接受+已婉拒」矛盾态并存）；不在任何用户可触发流转里。
  */
 @Singleton
 class MeetingAppointmentStore @Inject constructor(
@@ -110,6 +112,24 @@ class MeetingAppointmentStore @Inject constructor(
      */
     suspend fun repairMissedToHonored(uuid: String, sessionId: String, nowMillis: Long = System.currentTimeMillis()): MeetingAppointmentEntity? =
         transition(uuid) { repairedToHonored(it, sessionId, nowMillis) }
+
+    /**
+     * [zCODE] P1·矛盾守卫（评审裁决③：窗口 24h）：把同角色、[sinceMillis] 窗口内、排除 [excludeUuid] 的
+     * 全部待确认（proposed）兄弟约定置为 superseded 终态。返回被作废的行（调用方据此同步把对应确认卡收回执，
+     * 防按钮悬空）。终态守卫天然防重复作废（superseded 不再匹配 proposed 查询，幂等）。
+     */
+    suspend fun supersedeSiblingProposals(
+        characterUuid: String,
+        excludeUuid: String,
+        sinceMillis: Long,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): List<MeetingAppointmentEntity> {
+        val siblings = dao.pendingSiblingsForCharacter(characterUuid, excludeUuid, sinceMillis)
+        siblings.forEach { sibling ->
+            dao.update(sibling.copy(status = MeetingStatus.SUPERSEDED.raw, outcomeAt = nowMillis))
+        }
+        return siblings
+    }
 
     private suspend fun transition(
         uuid: String,

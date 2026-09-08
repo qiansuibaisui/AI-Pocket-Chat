@@ -356,12 +356,35 @@ class OfflineMeetingService @Inject constructor(
         }
     }
 
-    /** 改写邀约/结束卡的 responded 状态（accepted/declined/continued）——用户点卡片按钮后置灰（1:1 iOS responded）。 */
+    /** 改写邀约/结束卡的 responded 状态（accepted/declined/continued/superseded）——用户点卡片按钮后置灰（1:1 iOS responded）。 */
     suspend fun markInviteResponded(messageUuid: String, responded: String) {
         val msg = messageRepo.get(messageUuid) ?: return
         val data = OfflineInviteJson.parse(msg.content) ?: return
         messageRepo.upsert(msg.copy(content = OfflineInviteJson.encode(data.copy(responded = responded))))
     }
+
+    /**
+     * [zCODE] P1·矛盾守卫：把同会话其余未响应（responded=null）邀约卡标 superseded（保留最新、作废旧条目）。
+     * 用户对任一张邀约卡作出响应（接受/拒绝）后由 [com.situ.aichat.ui.chat.ChatOfflineController] 调用——
+     * 同一逻辑邀约短期内多次生成时，最终只落一个用户响应态，杜绝「已接受+已婉拒」并存。幂等（已响应卡不动）。
+     */
+    suspend fun supersedePendingInviteCards(conversationUuid: String, excludeMessageUuid: String) {
+        messageRepo.messagesByKind(conversationUuid, MessageKind.OFFLINE_INVITE_CARD.raw).forEach { msg ->
+            if (msg.messageUUID == excludeMessageUuid) return@forEach
+            val data = OfflineInviteJson.parse(msg.content) ?: return@forEach
+            if (data.responded == null) {
+                messageRepo.upsert(msg.copy(content = OfflineInviteJson.encode(data.copy(responded = "superseded"))))
+            }
+        }
+    }
+
+    /**
+     * [zCODE] P1·开场幂等判定：本场（sessionId）是否已有开场叙述——存在任意 assistant 纯文本消息
+     * （开场回合的正常落盘形态；标记/卡片不算）即视为已生成过。供 ChatOfflineController 防双开场。
+     */
+    suspend fun hasOpeningNarrative(conversationUuid: String, sessionId: String): Boolean =
+        messageRepo.offlineSessionMessages(conversationUuid, sessionId)
+            .any { it.roleRaw == "assistant" && it.messageKindRaw == MessageKind.PLAIN_TEXT.raw }
 
     // MARK: - 恢复 / 状态守护
 

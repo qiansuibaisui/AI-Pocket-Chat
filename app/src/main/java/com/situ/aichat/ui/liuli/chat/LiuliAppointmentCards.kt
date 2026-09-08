@@ -189,9 +189,10 @@ internal fun liuliResolveProposalState(status: MeetingStatus?, responded: String
     when (status) {
         MeetingStatus.PROPOSED -> LiuliProposalCardState.PENDING
         MeetingStatus.CONFIRMED, MeetingStatus.HONORED, MeetingStatus.MISSED -> LiuliProposalCardState.AGREED
-        MeetingStatus.CANCELLED -> LiuliProposalCardState.DECLINED
+        // [zCODE] P1：superseded（矛盾守卫作废的重复条目）按「已婉拒」收起按钮，取舍同暖陶 resolveCardState。
+        MeetingStatus.CANCELLED, MeetingStatus.SUPERSEDED -> LiuliProposalCardState.DECLINED
         null -> when (responded) {
-            FutureMeetingProposalData.RESPONDED_DECLINED -> LiuliProposalCardState.DECLINED
+            FutureMeetingProposalData.RESPONDED_DECLINED, FutureMeetingProposalData.RESPONDED_SUPERSEDED -> LiuliProposalCardState.DECLINED
             else -> LiuliProposalCardState.AGREED
         }
     }

@@ -19,6 +19,7 @@ class MeetingAppointmentTypesTest {
         assertEquals("honored", MeetingStatus.HONORED.raw)
         assertEquals("missed", MeetingStatus.MISSED.raw)
         assertEquals("cancelled", MeetingStatus.CANCELLED.raw)
+        assertEquals("superseded", MeetingStatus.SUPERSEDED.raw) // [zCODE] P1 矛盾守卫终态
     }
 
     @Test fun status_is_active_only_proposed_and_confirmed() {
@@ -27,11 +28,13 @@ class MeetingAppointmentTypesTest {
         assertFalse(MeetingStatus.HONORED.isActive)
         assertFalse(MeetingStatus.MISSED.isActive)
         assertFalse(MeetingStatus.CANCELLED.isActive)
+        assertFalse(MeetingStatus.SUPERSEDED.isActive) // [zCODE] P1：终态，不参与任何流转/查重/排程
     }
 
     @Test fun status_from_raw_unknown_falls_back_proposed() {
         assertEquals(MeetingStatus.CONFIRMED, MeetingStatus.fromRaw("confirmed"))
         assertEquals(MeetingStatus.MISSED, MeetingStatus.fromRaw("missed"))
+        assertEquals(MeetingStatus.SUPERSEDED, MeetingStatus.fromRaw("superseded")) // [zCODE] P1：新值不落 PROPOSED 兜底
         assertEquals(MeetingStatus.PROPOSED, MeetingStatus.fromRaw("garbage"))
     }
 

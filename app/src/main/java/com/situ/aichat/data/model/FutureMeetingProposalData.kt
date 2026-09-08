@@ -21,7 +21,7 @@ data class FutureMeetingProposalData(
     val invitation: String? = null,
     /** ≤12 字给用户看的隐晦暗示（不剧透）。 */
     val tensionHint: String? = null,
-    /** null = 待确认（答应/换时间/先不约 三按钮）；[RESPONDED_ACCEPTED] = 已约定回执；[RESPONDED_DECLINED] = 已婉拒回执。 */
+    /** null = 待确认（答应/换时间/先不约 三按钮）；[RESPONDED_ACCEPTED] = 已约定回执；[RESPONDED_DECLINED] = 已婉拒回执；[RESPONDED_SUPERSEDED] = 系统作废回执（[zCODE] P1 矛盾守卫，重复条目收回执防按钮悬空）。 */
     val responded: String? = null,
 ) {
     /** 给 LLM 的脱敏表示（结构化卡绝不喂原文 JSON；收口走此处）。[userName]=用户名（默认「用户」·图纸一 R1 承接·你=角色+用户名）。 */
@@ -39,6 +39,9 @@ data class FutureMeetingProposalData(
         const val TYPE = "future_meeting_proposal"
         const val RESPONDED_ACCEPTED = "accepted"
         const val RESPONDED_DECLINED = "declined"
+
+        /** [zCODE] P1：被「保留最新」矛盾守卫作废的重复卡回执（UI 按已作废收起按钮）。 */
+        const val RESPONDED_SUPERSEDED = "superseded"
     }
 }
 

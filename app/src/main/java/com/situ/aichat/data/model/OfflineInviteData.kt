@@ -56,6 +56,7 @@ data class OfflineInviteData(
         val status = when (responded) {
             "accepted" -> "${userName}接受了，两人随后见了面"
             "declined" -> "${userName}婉拒了，这次没见成"
+            "superseded" -> "该邀约已被更新的邀约替代（作废）" // [zCODE] P1 矛盾守卫回执
             else -> "${userName}还没回应" // null / "continued" / 未知值一律按未回应
         }
         return "[系统记录：${charDisplayName}向${userName}发出了线下见面邀约$detail | 状态=$status]"

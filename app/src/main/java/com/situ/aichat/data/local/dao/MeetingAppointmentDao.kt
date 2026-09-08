@@ -90,4 +90,14 @@ interface MeetingAppointmentDao {
     /** 备份恢复用：按 uuid 覆盖式插入（再导入幂等）。 */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrReplace(appointment: MeetingAppointmentEntity)
+
+    /**
+     * [zCODE] P1·矛盾守卫取材：同角色、排除指定 uuid、createdAt 在窗口内的待确认（proposed）兄弟约定。
+     * 供「保留最新作废旧条目」守卫逐条置 superseded（终态、不可再流转）。
+     */
+    @Query(
+        "SELECT * FROM meeting_appointments WHERE characterUuid = :characterUuid " +
+            "AND uuid != :excludeUuid AND status = 'proposed' AND createdAt >= :sinceMillis",
+    )
+    suspend fun pendingSiblingsForCharacter(characterUuid: String, excludeUuid: String, sinceMillis: Long): List<MeetingAppointmentEntity>
 }

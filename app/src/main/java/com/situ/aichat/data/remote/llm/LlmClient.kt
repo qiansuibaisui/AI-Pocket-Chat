@@ -33,7 +33,9 @@ import kotlin.math.pow
  * OpenAI-compatible chat client with SSE streaming. Faithful port of the iOS `LLMService`:
  * single request shape for all providers + small per-provider tweaks (headers, MiniMax temp,
  * response_format / stream_options filtering, thinking payload). Connection phase retries on
- * 429/5xx/network errors (respecting Retry-After); the SSE receive phase does not retry.
+ * 429/5xx/network errors (respecting Retry-After); the SSE receive phase retries only the
+ * "zero-content" window (P1: mid-stream break before any token was emitted → reopen the whole
+ * stream once; partial-content breaks still propagate unchanged).
  */
 class LlmClient(
     private val baseClient: OkHttpClient,
@@ -59,105 +61,176 @@ class LlmClient(
          *  实现须线程安全、不得阻塞、不得抛异常。 */
         onSseLine: (() -> Unit)? = null,
     ): Flow<StreamToken> = flow {
-        val bodyJson = buildRequestJson(messages, config, stream = true, temperature, maxTokens, responseFormat, tools)
+        // [zCODE] P1·接收期韧性（评审裁决②：零内容断流恰重试 1 次）：断流（IOException/Timeout）时若**尚未
+        // emit 任何 Content/Reasoning/ToolCallDelta**（429 降速秒断、首 token 前断流的典型形态）→ 退避后重开整条
+        // 流；已有部分内容则维持原行为上抛（半投递回合重试会分叉重复——幂等约束的另一半）。
+        // 重试携带首调 400 自愈已确定的修正参数（useNewName/clamp/去温度），不再二次自愈。
+        // 顺序注释（附加条件 a·锁定）：SSE 行 → ThinkTagParser（剥 <think>）→ OutputSanitizer.StreamSanitizer
+        // （剥泄漏闭合标签 [/xxx]）——思考域隐藏无泄漏风险，清洗只作用于正文域。
+        var carryMaxTokens = maxTokens
+        var carryUseNewName = false
+        var carryDropTemp = false
+        var emittedAnyToken = false
+        var receiveRetryLeft = RECEIVE_PHASE_ZERO_CONTENT_RETRIES
         val client = baseClient.newBuilder()
             .callTimeout(0, TimeUnit.SECONDS) // no overall cap; streams can be long
             .readTimeout(idleTimeoutSec, TimeUnit.SECONDS) // per-read idle guard
             .build()
 
-        // 首调 400 自愈（2026-07-27 超长章档捆绑 + 2026-08-31 推理系参数方言 + 2026-09-01 温度方言）：
-        // 分类见 [firstCall400RetryPlan]——换名（推理系拒收 max_tokens）> 降额（我方值超服务商硬顶，
-        // clamp SAFE_RETRY_MAX_TOKENS）> 去温度（方言不认 temperature）> 不重试。各类重试各恰一次
-        // （catch 只包首调，重试自身的异常自然上抛，故互不链式）；其余 400（模型名错等）原样抛。
-        val response = try {
-            connectWithRetry(client, config, bodyJson)
-        } catch (e: LlmError.Http) {
-            val sentTemperature = resolveEffectiveTemperature(temperature, config.providerType == ApiProviderType.MINIMAX, config.isThinkingModel)
-            when (firstCall400RetryPlan(e, maxTokens, sentTemperature)) {
-                FirstCall400RetryPlan.SWAP_PARAM_NAME -> {
-                    Log.w(TAG, "流式首调 max_tokens 参数名被拒（推理系方言），换 max_completion_tokens 同值重试一次")
-                    connectWithRetry(client, config, buildRequestJson(messages, config, stream = true, temperature, maxTokens, responseFormat, tools, useMaxCompletionTokens = true))
-                }
-                FirstCall400RetryPlan.CLAMP -> {
-                    Log.w(TAG, "流式首调 maxTokens=$maxTokens 被 400 拒（超服务商硬顶），clamp $SAFE_RETRY_MAX_TOKENS 重试一次")
-                    connectWithRetry(client, config, buildRequestJson(messages, config, stream = true, temperature, SAFE_RETRY_MAX_TOKENS, responseFormat, tools))
-                }
-                FirstCall400RetryPlan.DROP_TEMPERATURE -> {
-                    Log.w(TAG, "流式首调 temperature 被 400 拒（方言不认），去温度重试一次")
-                    connectWithRetry(client, config, buildRequestJson(messages, config, stream = true, temperature, maxTokens, responseFormat, tools, dropTemperature = true))
-                }
-                FirstCall400RetryPlan.NONE -> throw e
-            }
-        }
-        response.use { resp ->
-            val source = resp.body.source()
-            // M03 内联思考标签实时剥离：content 经 ThinkTagParser 过滤 <think>，思考内容转 Reasoning，不漏进气泡。
-            val thinkParser = ThinkTagParser()
-            // 批3 3-9：取消即断开底层连接——readUtf8Line() 阻塞读不响应协程取消（逐行 ensureActive 只在行间生效），
-            // 旧行为=停止生成后 IO 线程与连接滞留最长一个空闲超时（45s/120s）。watcher 在外层协程被取消时 close 响应
-            // → 阻塞读立刻抛 IOException 解锁；正常/异常收尾由 finally 撤销 watcher（scope 仍活跃 → 不误关）。
-            coroutineScope {
-                val watcher = launch {
-                    try {
-                        awaitCancellation()
-                    } finally {
-                        if (!this@coroutineScope.isActive) runCatching { resp.close() }
+        while (true) {
+            val bodyJson = buildRequestJson(
+                messages, config, stream = true, temperature, carryMaxTokens, responseFormat, tools,
+                useMaxCompletionTokens = carryUseNewName, dropTemperature = carryDropTemp,
+            )
+
+            // 首调 400 自愈（2026-07-27 超长章档捆绑 + 2026-08-31 推理系参数方言 + 2026-09-01 温度方言）：
+            // 分类见 [firstCall400RetryPlan]——换名（推理系拒收 max_tokens）> 降额（我方值超服务商硬顶，
+            // clamp SAFE_RETRY_MAX_TOKENS）> 去温度（方言不认 temperature）> 不重试。各类重试各恰一次
+            // （catch 只包首调，重试自身的异常自然上抛，故互不链式）；其余 400（模型名错等）原样抛。
+            // 自愈结论写入 carry* 供本回合内后续接收期重试直接携带。
+            val response = try {
+                connectWithRetry(client, config, bodyJson)
+            } catch (e: LlmError.Http) {
+                val sentTemperature = resolveEffectiveTemperature(temperature, config.providerType == ApiProviderType.MINIMAX, config.isThinkingModel)
+                when (firstCall400RetryPlan(e, carryMaxTokens, sentTemperature)) {
+                    FirstCall400RetryPlan.SWAP_PARAM_NAME -> {
+                        Log.w(TAG, "流式首调 max_tokens 参数名被拒（推理系方言），换 max_completion_tokens 同值重试一次")
+                        carryUseNewName = true
+                        connectWithRetry(client, config, buildRequestJson(messages, config, stream = true, temperature, carryMaxTokens, responseFormat, tools, useMaxCompletionTokens = true, dropTemperature = carryDropTemp))
                     }
+                    FirstCall400RetryPlan.CLAMP -> {
+                        Log.w(TAG, "流式首调 maxTokens=$carryMaxTokens 被 400 拒（超服务商硬顶），clamp $SAFE_RETRY_MAX_TOKENS 重试一次")
+                        carryMaxTokens = SAFE_RETRY_MAX_TOKENS
+                        connectWithRetry(client, config, buildRequestJson(messages, config, stream = true, temperature, SAFE_RETRY_MAX_TOKENS, responseFormat, tools, useMaxCompletionTokens = carryUseNewName, dropTemperature = carryDropTemp))
+                    }
+                    FirstCall400RetryPlan.DROP_TEMPERATURE -> {
+                        Log.w(TAG, "流式首调 temperature 被 400 拒（方言不认），去温度重试一次")
+                        carryDropTemp = true
+                        connectWithRetry(client, config, buildRequestJson(messages, config, stream = true, temperature, carryMaxTokens, responseFormat, tools, useMaxCompletionTokens = carryUseNewName, dropTemperature = true))
+                    }
+                    FirstCall400RetryPlan.NONE -> throw e
                 }
-                try {
-                    while (true) {
-                        coroutineContext.ensureActive()
-                        val line = source.readUtf8Line() ?: break
-                        onSseLine?.invoke()
-                        when (val result = parseSseLine(line)) {
-                            SseResult.Skip -> Unit
-                            SseResult.Done -> break
-                            is SseResult.Chunk -> {
-                                // Usage rides the final chunk (often choice-less) → log before the delta guard.
-                                result.chunk.usage?.let {
-                                    UsageLogger.log(it, config.providerType, config.modelName)
-                                    onUsage?.invoke(it)
-                                }
-                                // finish_reason 常骑在「delta 空」的末帧上 → 必须在下面的 delta 卫兵之前回调，否则永远收不到。
-                                result.chunk.choices.firstOrNull()?.finishReason?.takeIf { it.isNotEmpty() }?.let { onFinishReason?.invoke(it) }
-                                val delta = result.chunk.choices.firstOrNull()?.delta ?: continue
-                                // 优先 reasoning_content（DeepSeek）回退 reasoning（OpenRouter）——已是思考字段，直发。
-                                (delta.reasoningContent ?: delta.reasoning)?.takeIf { it.isNotEmpty() }
-                                    ?.let { emit(StreamToken.Reasoning(it)) }
-                                // content 可能内联 <think> 标签（开源模型）→ 经解析器切分。
-                                delta.content?.takeIf { it.isNotEmpty() }?.let { content ->
-                                    thinkParser.parse(content).forEach { emit(it) }
-                                }
-                                // 工具调用增量（仅在请求带 tools 时出现，1:1 iOS toolCallDelta yield）。
-                                delta.toolCalls?.forEach { tc ->
-                                    emit(
-                                        StreamToken.ToolCallDelta(
-                                            ToolCallChunk(
-                                                index = tc.index,
-                                                id = tc.id,
-                                                functionName = tc.function?.name,
-                                                argumentChunk = tc.function?.arguments,
-                                            ),
-                                        ),
-                                    )
-                                }
+            }
+
+            // [zCODE] P1·解析容错层挂载（正文域）：每条流独立实例；剥离量流尾出报告日志（评审裁决①）。
+            val sanitizer = OutputSanitizer.StreamSanitizer()
+            var requestRetry = false
+            response.use { resp ->
+                    val source = resp.body.source()
+                    // M03 内联思考标签实时剥离：content 经 ThinkTagParser 过滤 <think>，思考内容转 Reasoning，不漏进气泡。
+                    val thinkParser = ThinkTagParser()
+                    // 批3 3-9：取消即断开底层连接——readUtf8Line() 阻塞读不响应协程取消（逐行 ensureActive 只在行间生效），
+                    // 旧行为=停止生成后 IO 线程与连接滞留最长一个空闲超时（45s/120s）。watcher 在外层协程被取消时 close 响应
+                    // → 阻塞读立刻抛 IOException 解锁；正常/异常收尾由 finally 撤销 watcher（scope 仍活跃 → 不误关）。
+                    coroutineScope {
+                        val watcher = launch {
+                            try {
+                                awaitCancellation()
+                            } finally {
+                                if (!this@coroutineScope.isActive) runCatching { resp.close() }
                             }
                         }
+                        try {
+                            /** [zCODE] P1：正文 token 过 StreamSanitizer（ThinkTagParser → StreamSanitizer 顺序锁定，见 OutputSanitizer 类注释）。 */
+                            suspend fun emitContentTokens(tokens: List<StreamToken>) {
+                                for (token in tokens) {
+                                    when (token) {
+                                        is StreamToken.Content -> sanitizer.parse(token.text).forEach { piece ->
+                                            if (piece.isNotEmpty()) {
+                                                emittedAnyToken = true
+                                                emit(StreamToken.Content(piece))
+                                            }
+                                        }
+                                        is StreamToken.Reasoning -> {
+                                            emittedAnyToken = true
+                                            emit(token)
+                                        }
+                                        is StreamToken.ToolCallDelta -> {
+                                            emittedAnyToken = true
+                                            emit(token)
+                                        }
+                                    }
+                                }
+                            }
+                            while (true) {
+                                coroutineContext.ensureActive()
+                                val line = source.readUtf8Line() ?: break
+                                onSseLine?.invoke()
+                                when (val result = parseSseLine(line)) {
+                                    SseResult.Skip -> Unit
+                                    SseResult.Done -> break
+                                    is SseResult.Chunk -> {
+                                        // Usage rides the final chunk (often choice-less) → log before the delta guard.
+                                        result.chunk.usage?.let {
+                                            UsageLogger.log(it, config.providerType, config.modelName)
+                                            onUsage?.invoke(it)
+                                        }
+                                        // finish_reason 常骑在「delta 空」的末帧上 → 必须在下面的 delta 卫兵之前回调，否则永远收不到。
+                                        result.chunk.choices.firstOrNull()?.finishReason?.takeIf { it.isNotEmpty() }?.let { onFinishReason?.invoke(it) }
+                                        val delta = result.chunk.choices.firstOrNull()?.delta ?: continue
+                                        // 优先 reasoning_content（DeepSeek）回退 reasoning（OpenRouter）——已是思考字段，直发。
+                                        (delta.reasoningContent ?: delta.reasoning)?.takeIf { it.isNotEmpty() }
+                                            ?.let { emitContentTokens(listOf(StreamToken.Reasoning(it))) }
+                                        // content 可能内联 <think> 标签（开源模型）→ 先经 ThinkTagParser 切分，正文再过清洗层。
+                                        delta.content?.takeIf { it.isNotEmpty() }?.let { content ->
+                                            emitContentTokens(thinkParser.parse(content))
+                                        }
+                                        // 工具调用增量（仅在请求带 tools 时出现，1:1 iOS toolCallDelta yield）。
+                                        delta.toolCalls?.forEach { tc ->
+                                            emitContentTokens(
+                                                listOf(
+                                                    StreamToken.ToolCallDelta(
+                                                        ToolCallChunk(
+                                                            index = tc.index,
+                                                            id = tc.id,
+                                                            functionName = tc.function?.name,
+                                                            argumentChunk = tc.function?.arguments,
+                                                        ),
+                                                    ),
+                                                ),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            // 流结束，清空 parser 缓冲区；正文残留最后过一遍清洗层收尾。
+                            emitContentTokens(thinkParser.flush())
+                            sanitizer.flush().takeIf { it.isNotEmpty() }?.let {
+                                emittedAnyToken = true
+                                emit(StreamToken.Content(it))
+                            }
+                        } catch (e: SocketTimeoutException) {
+                            if (!emittedAnyToken && receiveRetryLeft > 0) {
+                                receiveRetryLeft--
+                                requestRetry = true
+                                Log.w(TAG, "SSE 零内容超时，${backoffMs(1)}ms 后重开整条流（host=${hostOf(config.baseUrl)}）")
+                                delay(backoffMs(1))
+                                return@coroutineScope
+                            }
+                            throw LlmError.Timeout
+                        } catch (e: IOException) {
+                            if (!emittedAnyToken && receiveRetryLeft > 0) {
+                                receiveRetryLeft--
+                                requestRetry = true
+                                Log.w(TAG, "SSE 零内容断流，${backoffMs(1)}ms 后重开整条流（host=${hostOf(config.baseUrl)}）: ${e.message}")
+                                delay(backoffMs(1))
+                                return@coroutineScope
+                            }
+                            // 接收阶段不重试：wifi 掉线 / 服务端中途关连接 → 原样抛出，回复会被截断。
+                            // 记一笔（仅 host + 异常信息）让「网络中断截断」可与「模型自然停」区分，绝不记内容。
+                            Log.w(TAG, "SSE 流中断 host=${hostOf(config.baseUrl)}: ${e.message}")
+                            throw e
+                        } finally {
+                            watcher.cancel()
+                        }
                     }
-                    // 流结束，清空 parser 缓冲区
-                    thinkParser.flush().forEach { emit(it) }
-                } catch (e: SocketTimeoutException) {
-                    throw LlmError.Timeout
-                } catch (e: IOException) {
-                    // 接收阶段不重试：wifi 掉线 / 服务端中途关连接 → 原样抛出，回复会被截断。
-                    // 记一笔（仅 host + 异常信息）让「网络中断截断」可与「模型自然停」区分，绝不记内容。
-                    Log.w(TAG, "SSE 流中断 host=${hostOf(config.baseUrl)}: ${e.message}")
-                    throw e
-                } finally {
-                    watcher.cancel()
                 }
+                if (requestRetry) continue
+                if (sanitizer.removedCount > 0) {
+                    Log.w(TAG, "OutputSanitizer: 流式剥离 ${sanitizer.removedCount} 处泄漏闭合标签")
+                }
+                return@flow
             }
-        }
     }.flowOn(Dispatchers.IO)
 
     /**
@@ -230,7 +303,13 @@ class LlmClient(
         }
         // 合并语义（升额重试 × 记忆护栏 G2）：回调**最终一次尝试**的 finish_reason——升额后仍截断也如实上报，调用方各自守卫。
         onFinishReason?.invoke(outcome.finishReason)
-        outcome.content
+        // [zCODE] P1·解析容错层（评审裁决①）：completion 统一出口清洗——剥泄漏闭合标签（[/dialogue] 类）。
+        // 后台 JSON 产物不含该形态、零波及；剥离量非零出报告日志（绝不记内容本身）。
+        val sanitized = OutputSanitizer.sanitizeFull(outcome.content)
+        if (sanitized.removedCount > 0) {
+            Log.w(TAG, "OutputSanitizer: 非流式剥离 ${sanitized.removedCount} 处泄漏闭合标签")
+        }
+        sanitized.text
     }
 
     private class CompletionOutcome(val content: String, val finishReason: String?)
@@ -468,6 +547,9 @@ class LlmClient(
         const val SSE_IDLE_TIMEOUT_SEC = 45L
         const val THINKING_SSE_IDLE_TIMEOUT_SEC = 120L
         private const val MAX_RETRIES = 3
+
+        /** [zCODE] P1 接收期零内容重试次数（评审裁决②：恰 1 次）。 */
+        private const val RECEIVE_PHASE_ZERO_CONTENT_RETRIES = 1
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
         /** 撞限升额倍数（与故事正章 preferredCreationMaxTokens 的思考模型 ×3 同口径）。 */

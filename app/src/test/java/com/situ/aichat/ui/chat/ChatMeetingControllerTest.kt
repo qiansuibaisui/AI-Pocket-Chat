@@ -150,16 +150,16 @@ class ChatMeetingControllerTest {
     // ---- 写真理源动作（动作后统一刷到点通知）----
 
     @Test
-    fun 答应_confirmFromCard并刷到点通知() {
+    fun 答应_respondFromCardAccepted并刷到点通知() {
         controller.acceptAppointment("appt-1")
-        coVerify { coordinator.confirmFromCard("appt-1", any()) }
+        coVerify { coordinator.respondFromCard("appt-1", accepted = true, any()) }
         coVerify { meetupNotificationService.rescheduleAll(any()) }
     }
 
     @Test
-    fun 先不约_declineFromCard并刷到点通知() {
+    fun 先不约_respondFromCardDeclined并刷到点通知() {
         controller.declineAppointment("appt-1")
-        coVerify { coordinator.declineFromCard("appt-1", any()) }
+        coVerify { coordinator.respondFromCard("appt-1", accepted = false, any()) }
         coVerify { meetupNotificationService.rescheduleAll(any()) }
     }
 

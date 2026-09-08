@@ -262,10 +262,12 @@ private fun ReceiptLine(icon: ImageVector, text: String, color: Color) {
 private fun resolveCardState(status: MeetingStatus?, responded: String?): ProposalCardState = when (status) {
     MeetingStatus.PROPOSED -> ProposalCardState.PENDING
     MeetingStatus.CONFIRMED, MeetingStatus.HONORED, MeetingStatus.MISSED -> ProposalCardState.AGREED
-    MeetingStatus.CANCELLED -> ProposalCardState.DECLINED
+    // [zCODE] P1：superseded（矛盾守卫作废的重复条目）按「已婉拒」收起按钮——被用户响应过的是孪生新卡，
+    // 本卡是短期重复生成的旧条目，收起即可（取舍：不新增第四态，避免双皮肤各加一套渲染）。
+    MeetingStatus.CANCELLED, MeetingStatus.SUPERSEDED -> ProposalCardState.DECLINED
     // 约定已不存在（删角色/会话）：退到消息快照兜底、收起按钮（不再可操作）。
     null -> when (responded) {
-        FutureMeetingProposalData.RESPONDED_DECLINED -> ProposalCardState.DECLINED
+        FutureMeetingProposalData.RESPONDED_DECLINED, FutureMeetingProposalData.RESPONDED_SUPERSEDED -> ProposalCardState.DECLINED
         else -> ProposalCardState.AGREED
     }
 }

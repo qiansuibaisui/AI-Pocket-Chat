@@ -130,6 +130,41 @@ class MeetingProposalCoordinator @Inject constructor(
     suspend fun declineFromCard(appointmentUuid: String, nowMillis: Long = System.currentTimeMillis()): MeetingAppointmentEntity? =
         store.cancel(appointmentUuid, nowMillis)
 
+    /**
+     * [zCODE] P1·确认卡统一响应入口（幂等 + 矛盾守卫，评审裁决③：作废窗口 24h）。
+     * ① 幂等：仅 proposed 可响应；已响应/终态 no-op 返回 null（重复点击、重放安全，禁止同内容双写）；
+     * ② 真理源流转：accepted → confirmed / declined → cancelled；
+     * ③ 卡同步 responded 回执（消息快照与真理源两表示同源，单一入口落盘）；
+     * ④ 矛盾守卫：同角色 24h 窗口内其余待确认兄弟约定 → 一律置 superseded 并收回执（保留最新、
+     *    作废旧条目——治「已接受+已婉拒」矛盾状态并存落盘）。
+     */
+    suspend fun respondFromCard(
+        appointmentUuid: String,
+        accepted: Boolean,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): MeetingAppointmentEntity? {
+        val appt = store.get(appointmentUuid) ?: return null
+        if (MeetingStatus.fromRaw(appt.status) != MeetingStatus.PROPOSED) return null
+        val updated = (if (accepted) store.confirm(appointmentUuid, nowMillis) else store.cancel(appointmentUuid, nowMillis))
+            ?: return null
+        markProposalCardResponded(appt.conversationUuid, appointmentUuid, if (accepted) FutureMeetingProposalData.RESPONDED_ACCEPTED else FutureMeetingProposalData.RESPONDED_DECLINED)
+        store.supersedeSiblingProposals(appt.characterUuid, appointmentUuid, nowMillis - SUPERSEDE_WINDOW_MS, nowMillis)
+            .forEach { sibling ->
+                markProposalCardResponded(sibling.conversationUuid, sibling.uuid, FutureMeetingProposalData.RESPONDED_SUPERSEDED)
+            }
+        return updated
+    }
+
+    /** 卡 responded 回执同步（[respondFromCard] 内部）：按 appointmentUuid 找会话内待确认卡（responded=null）写回执；已回执的不再改写（幂等）。 */
+    private suspend fun markProposalCardResponded(conversationUuid: String, appointmentUuid: String, receipt: String) {
+        messageRepo.messagesByKind(conversationUuid, MessageKind.FUTURE_MEETING_PROPOSAL_CARD.raw).forEach { msg ->
+            val data = FutureMeetingProposalJson.parse(msg.content) ?: return@forEach
+            if (data.appointmentUuid == appointmentUuid && data.responded == null) {
+                messageRepo.upsert(msg.copy(content = FutureMeetingProposalJson.encode(data.copy(responded = receipt))))
+            }
+        }
+    }
+
     /** 改期到新时间（确认卡「换个时间」/ 管理入口）：更新时间 + 确认（清排程标记供 Phase 10 重排）。 */
     suspend fun rescheduleTo(
         appointmentUuid: String,
@@ -257,3 +292,6 @@ class MeetingProposalCoordinator @Inject constructor(
         )
     }
 }
+
+/** [zCODE] P1·矛盾守卫的兄弟作废窗口（评审裁决③：24h，对齐 ingest 查重的短期重扫范围）。 */
+private const val SUPERSEDE_WINDOW_MS = 24L * 60 * 60 * 1000

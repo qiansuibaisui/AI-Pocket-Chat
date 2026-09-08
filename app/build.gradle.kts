@@ -265,6 +265,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.mockk)
+    // [zCODE] P1：LlmClient 429/断流仿真（评审裁决④；test-only 不进 APK）
+    testImplementation(libs.okhttp.mockwebserver)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
     // 深链导航落地 T2（Robolectric + TestNavHostController·13.10a 分享被吞修复）。test-only 不进 APK。
