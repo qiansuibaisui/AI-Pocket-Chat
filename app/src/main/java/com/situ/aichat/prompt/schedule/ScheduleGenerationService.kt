@@ -44,6 +44,10 @@ data class ScheduleGenerationRequest(
     val liveness: ScheduleLivenessContext? = null,       // 素材包（backfill 恒 null = 精简）
     /** 图纸二·人称指名：真实用户名（协调器解析·空回退「用户」）；默认「用户」= 旧构造点/测试零改。 */
     val userName: String = "用户",
+    /** [zCODE] P1·第2项 读取处2：当前剧情锚点（null/超龄 = 不约束·fail-open——位置不明宁可少管不可瞎管）。
+     *  fresh 时按 MotionState 注入位置硬约束（海上→禁陆地条目），治 F1「锚点在海上、日程生成整套陆地生活」。 */
+    val anchor: com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity? = null,
+    val anchorFresh: Boolean = false,
 ) {
     data class OtherSchedule(val name: String, val events: List<ScheduleEventEntity>)
 }
@@ -228,6 +232,26 @@ class ScheduleGenerationService @Inject constructor(
         request.worldWeatherLine?.let { line ->
             if (request.worldPlaceNames.isEmpty()) sections.add("") // 程序城无地点段 → 天气行自起空行分隔
             sections.add(line)
+        }
+
+        // [zCODE] P1·第2项 读取处2：剧情锚点位置硬约束（fail-open：无锚点/超龄/位置不明 → 整段不加，宁可少管）。
+        // 幻影见面规则常驻（与锚点无关）：聊天中随意提及的活动不得写入日程——治「艾斯'集市吃饭'幻影日程」。
+        sections.add("")
+        sections.add("【剧情位置约束】")
+        sections.add("聊天里只是随口提过的活动或地点，不构成约定——除非存在已确认的见面约定，否则不要把它们写进今天的日程。")
+        val anchorState = request.anchor
+            ?.takeIf { request.anchorFresh }
+            ?.let { com.situ.aichat.prompt.AnchorVocabulary.MotionState.fromRaw(it.motionStateRaw) }
+        when (anchorState) {
+            com.situ.aichat.prompt.AnchorVocabulary.MotionState.SAILING ->
+                sections.add("【硬约束】角色目前正在海上（${request.anchor!!.locationRaw}）——今天全部事件的 location 必须在船上/海上，禁止出现任何陆地地点（集市/街道/店铺/公园等）。")
+            com.situ.aichat.prompt.AnchorVocabulary.MotionState.DOCKED ->
+                sections.add("【硬约束】角色目前停泊在港口（${request.anchor!!.locationRaw}）——今天的活动范围以船上与码头/港口周边为主，不要安排远离港口的市内活动。")
+            com.situ.aichat.prompt.AnchorVocabulary.MotionState.ASHORE ->
+                sections.add("当前位置提示：角色目前在岸上（${request.anchor!!.locationRaw}）——海上活动不要安排。")
+            com.situ.aichat.prompt.AnchorVocabulary.MotionState.INDOORS ->
+                sections.add("当前位置提示：角色目前在室内（${request.anchor!!.locationRaw}）——行程应从该位置自然衔接。")
+            else -> Unit // unknown / 无锚点 / 超龄：不约束（fail-open）
         }
 
         // 长期记忆块（图纸 C4·§4-E·!backfill）：印象笔记的【长期事实】节，角色事实进日程、用户事实只进独白。

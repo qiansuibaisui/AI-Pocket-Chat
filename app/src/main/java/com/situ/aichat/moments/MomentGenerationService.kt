@@ -85,6 +85,7 @@ class MomentGenerationService @Inject constructor(
     private val newPostNotifier: MomentNewPostNotifier,
     private val userProfileDao: UserProfileDao,
     private val conversationDao: ConversationDao,
+    private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项 读取处3
 ) {
 
     private data class GateState(val running: Boolean, val startedAt: Long)
@@ -326,7 +327,35 @@ class MomentGenerationService @Inject constructor(
         // "Token count:"/{"error"}/纯数字等非正文 → 视为生成失败、不入库（返回 null = iOS 抛错不持久化）。
         // 动态额外抬最短长度门：提示词要求 50-150 字，<MIN_POST_CONTENT_LENGTH 字基本可断定是聊天腔
         // 短回复/罐头输出而非动态（2026-07-07「嗯嗯，刚看到消息。」入库教训）；丢弃后下一轮周期重试。
-        return result.takeIf { GeneratedContentValidator.isLikelyValid(it, MIN_POST_CONTENT_LENGTH) }
+        var validated = result.takeIf { GeneratedContentValidator.isLikelyValid(it, MIN_POST_CONTENT_LENGTH) }
+
+        // [zCODE] P1·第2项 读取处3：海陆错配拒发（评审附加条件1）。锚点 sailing 而正文出现陆地现在时位置词
+        //（过去时间状语附近豁免——AnchorConflictGuard 内规则）→ 重生成恰 1 次（裁决1），再冲突丢弃本条。
+        // 拒发仅记日志计数与样本（附加条件1a：上线后看误杀率）；无锚点/非 sailing 恒放行（fail-open）。
+        if (validated != null) {
+            val anchorState = runCatching {
+                storyStateRepository.freshAnchorFor(character.uuid, maxAgeMs = com.situ.aichat.prompt.AnchorVocabulary.AGING_MAX_AGE_MS, nowMillis = nowMillis)
+            }.getOrNull()?.let { com.situ.aichat.prompt.AnchorVocabulary.MotionState.fromRaw(it.motionStateRaw) }
+            if (anchorState != null && AnchorConflictGuard.hasConflict(validated, anchorState)) {
+                Log.w(TAG, "锚点错配拒发#1 char=${character.name.take(8)} state=$anchorState sample=${validated.take(40)}")
+                val buffer = contextLog.completion(
+                    source = LogSource.MOMENT_POST,
+                    characterName = character.name,
+                    config = config,
+                    messages = messages,
+                    temperature = 0.9,
+                )
+                val retry = MemoryService.strippingThinkingTags(buffer)
+                    .takeIf { GeneratedContentValidator.isLikelyValid(it, MIN_POST_CONTENT_LENGTH) }
+                if (retry != null && !AnchorConflictGuard.hasConflict(retry, anchorState)) {
+                    validated = retry
+                } else {
+                    Log.w(TAG, "锚点错配拒发#2（重生成仍冲突，丢弃本条）char=${character.name.take(8)}")
+                    validated = null
+                }
+            }
+        }
+        return validated
     }
 
     /**
@@ -386,18 +415,26 @@ class MomentGenerationService @Inject constructor(
         return null
     }
 
-    /** 今日日程素材段（硬编码中文）。日程系统关 / 无今日日程 → ""。 */
+    /** 今日日程素材段（硬编码中文）。日程系统关 / 无今日日程 → ""。[zCODE] P1·第2项 读取处3：锚点优先。 */
     private suspend fun buildSchedulePrompt(
         character: CharacterEntity,
         scheduleSystemEnabled: Boolean,
         nowMillis: Long,
         zone: ZoneId,
     ): String {
-        if (!scheduleSystemEnabled) return ""
+        // [zCODE] 读取处3：当前状态行强制锚点优先（AGING 内 fresh 即用——F1 根因切断：位置不再来自日程派生）；
+        // 无锚点/超龄回落日程现状（fail-open·老角色零波及）。锚点在日程系统关时也注入（真实位置与日程系统无关）。
+        val anchor = runCatching {
+            storyStateRepository.freshAnchorFor(character.uuid, maxAgeMs = com.situ.aichat.prompt.AnchorVocabulary.AGING_MAX_AGE_MS, nowMillis = nowMillis)
+        }.getOrNull()
+        if (!scheduleSystemEnabled) {
+            return if (anchor == null) "" else MomentPromptContext.buildSchedulePromptText(emptyList(), nowMillis, zone, character.name, anchor)
+        }
         val today = DateFormatters.startOfDayMillis(nowMillis, zone)
-        val schedule = scheduleDao.scheduleFor(character.uuid, today) ?: return ""
-        val events = scheduleDao.eventsForSchedule(schedule.uuid)
-        return MomentPromptContext.buildSchedulePromptText(events, nowMillis, zone, character.name)
+        val schedule = scheduleDao.scheduleFor(character.uuid, today)
+        val events = schedule?.let { scheduleDao.eventsForSchedule(it.uuid) } ?: emptyList()
+        if (events.isEmpty() && anchor == null) return ""
+        return MomentPromptContext.buildSchedulePromptText(events, nowMillis, zone, character.name, anchor)
     }
 
     private fun tryAcquire(now: Long): Boolean {

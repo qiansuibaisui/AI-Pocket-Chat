@@ -93,6 +93,10 @@ internal object ScheduleTimelineLogic {
      */
     fun activityText(activity: String, relatedCharacterNames: String?): String {
         val names = relatedCharacterNames?.trim().orEmpty()
-        return if (names.isEmpty()) activity else "和「$names」$activity"
+        // [zCODE] P1·第2项 读取处2 顺带修（格式双写）：activity 已含同名人（如「与千岁在集市」）→ 不再前缀
+        // 「和「千岁」」，杜绝「和「千岁」和千岁在集市」嵌套双写。多名单个命中即豁免（宁可少前缀不可双写）。
+        val bareNames = names.replace(Regex("[「」，、,\\s]+"), "、").split("、").filter { it.isNotEmpty() }
+        val alreadyMentioned = bareNames.any { activity.contains(it) } || activity.contains(names)
+        return if (names.isEmpty() || alreadyMentioned) activity else "和「$names」$activity"
     }
 }

@@ -73,6 +73,7 @@ class ProfileMeetingRowOverrideTest {
             offlineRetryCoordinator = mockk(relaxed = true), salaryPayoutService = mockk(relaxed = true),
             economyLastViewed = mockk(relaxed = true), conversationRepo = mockk(relaxed = true),
             manualMemoryOrganize = mockk(relaxed = true), offlineMeetingMemoryRepository = memoryRepo,
+            storyStateRepository = mockk(relaxed = true), // [zCODE] P1·第2项（observeCurrentAnchor relaxed→锚点行 null=零变化）
         )
     }
 

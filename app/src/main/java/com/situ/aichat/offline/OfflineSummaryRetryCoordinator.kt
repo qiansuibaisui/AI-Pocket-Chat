@@ -58,6 +58,7 @@ class OfflineSummaryRetryCoordinator @Inject constructor(
     private val healStore: OfflineSummaryHealStore,
     private val promiseLedgerService: PromiseLedgerService,
     private val userProfileDao: UserProfileDao,
+    private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项：见面事件回流
 ) {
 
     /** 手动重试进行中的 sessionId 集合（驱动「简版」徽章转圈态；见 [manuallyRetry] 守卫注释）。 */
@@ -182,6 +183,23 @@ class OfflineSummaryRetryCoordinator @Inject constructor(
             // （blob 冻结只读·只在懒播种时读一次），Repository 落行即生效。
             conversationRepo.clearPendingOfflineSummary(conversationUuid)
             conversationRepo.removeFallbackSessionId(conversationUuid, sessionId)
+            // [zCODE] P1·第2项 读取处1 数据供给（见面事件回流）：摘要成功 → 已完成事件账本登记（治「见面结束私聊
+            // 回滚重演」——读取处1 注入「不得重新执行」清单的数据源）。eventKey 用 sessionId 天然幂等（重跑不堆行）；
+            // description 取亮点前 3；失败仅日志、不影响摘要成败。
+            runCatching {
+                storyStateRepository.recordCompletedEvent(
+                    characterUuids = listOf(character.uuid),
+                    conversationUuids = mapOf(character.uuid to conversationUuid),
+                    eventKey = "offline-meeting-$sessionId",
+                    description = buildString {
+                        append("线下见面已完成")
+                        draft.highlights.take(3).forEach { append("；").append(it) }
+                    },
+                    source = com.situ.aichat.data.local.entity.StoryEventSource.OFFLINE_MEETING,
+                    relatedMessageUUID = sessionId,
+                    nowMillis = now,
+                )
+            }.onFailure { Log.w(TAG, "见面事件回流登记失败（不影响摘要）session=$sessionId") }
             Log.d(TAG, "见面摘要 v2 提取成功 session=$sessionId")
             RetryOutcome.SUCCESS
         } catch (e: CancellationException) {

@@ -50,8 +50,13 @@ class ScheduleCoordinator @Inject constructor(
     private val backgroundScheduler: BackgroundScheduler,
     private val stageService: WorldStageService,
     private val livenessCollector: ScheduleLivenessContextCollector,
+    private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项 读取处2
 ) {
     private val generationMutex = Mutex()
+
+    /** [zCODE] P1·第2项：fresh 锚点（取用失败 → null = fail-open 不约束）。 */
+    private suspend fun freshAnchorForSchedule(characterUuid: String) =
+        runCatching { storyStateRepository.freshAnchorFor(characterUuid) }.getOrNull()
 
     private val _isGenerating = MutableStateFlow(false)
 
@@ -294,6 +299,10 @@ class ScheduleCoordinator @Inject constructor(
             economicTier = livenessCollector.economicTierFor(character.uuid),
             liveness = livenessCollector.collectFor(character.uuid, todayMillis, zone),
             userName = userName,
+            // [zCODE] P1·第2项 读取处2：fresh 锚点才作硬约束输入（fail-open：超龄/无锚点不约束）。仅今日/未来
+            // 正式生成带（backfill 历史日不带——锚点是"当前"状态，套到历史日是时空错置）。
+            anchor = freshAnchorForSchedule(character.uuid),
+            anchorFresh = freshAnchorForSchedule(character.uuid) != null,
         )
         try {
             generationService.generateSchedule(request, config)

@@ -51,6 +51,7 @@ import com.situ.aichat.data.repository.MessageRepository
 import com.situ.aichat.data.repository.PetRepository
 import com.situ.aichat.data.repository.PetWriteLock
 import com.situ.aichat.data.repository.StickerRepository
+import com.situ.aichat.prompt.AnchorVocabulary
 import com.situ.aichat.prompt.ContextSegment
 import com.situ.aichat.prompt.PromptBuilder
 import com.situ.aichat.prompt.PromptBuilder.AssistantDeliveryMode
@@ -129,6 +130,7 @@ internal class AssistantTurnEngine(
     private val promiseToolHandler: ChatPromiseToolHandler,
     private val ourDayRepository: com.situ.aichat.data.repository.OurDayRepository,
     private val meetingAppointmentStore: MeetingAppointmentStore,
+    private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项：锚点中央登记读 API
     private val errorFlow: MutableStateFlow<String?>,
     private val infoToastFlow: MutableStateFlow<String?>,
     private val isDelivering: MutableStateFlow<Boolean>,
@@ -263,6 +265,12 @@ internal class AssistantTurnEngine(
             .toLocalDate().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val todaySchedule = scheduleDao.scheduleFor(character.uuid, todayStartMillis)
         val todayScheduleEvents = todaySchedule?.let { scheduleDao.eventsForSchedule(it.uuid) } ?: emptyList()
+        // [zCODE] P1·第2项 读取处1 预取：当前锚点快照（currentAnchor 全量取——fresh/aging/stale 分级在渲染侧判定）
+        // + 近 24h 已完成事件清单（「不得重新执行」注入数据源）。失败不阻塞回合（锚点是增强数据）。
+        val storyAnchorSnapshot = runCatching { storyStateRepository.currentAnchorFor(character.uuid) }.getOrNull()
+        val completedStoryEvents = runCatching {
+            storyStateRepository.recentCompletedEvents(character.uuid, nowInstant.toEpochMilli() - AnchorVocabulary.AGING_MAX_AGE_MS)
+        }.getOrDefault(emptyList())
         // 时间感知三期：今天之前 3 天的日程事件 → 【你最近几天的日子】。起点用**日期算术**
         //（不是 todayStart − 3×86400000，夏令时 / 时区偏移下不安全）；复用上面同一个 now，不另起 Instant.now()。
         val recentDaysStartMillis = Instant.ofEpochMilli(todayStartMillis).atZone(ZoneId.systemDefault())
@@ -375,6 +383,9 @@ internal class AssistantTurnEngine(
                     it.isNotBlank()
             },
             segmentSink = segmentSink,
+            // [zCODE] P1·第2项 读取处1：剧情锚点 + 已完成事件清单（每回合装配前预取一次·常开注入）。
+            storyAnchor = storyAnchorSnapshot,
+            completedEvents = completedStoryEvents,
         )
         // 批 D 上下文日志：主装配顺带收一次结构化分段（聊天管线，1:1 iOS buildMessagesWithSegments）；
         // 后续 fallback/降级重装配不再收。每次流式尝试落一条日志（source=CHAT），用本表 + 末帧 usage。

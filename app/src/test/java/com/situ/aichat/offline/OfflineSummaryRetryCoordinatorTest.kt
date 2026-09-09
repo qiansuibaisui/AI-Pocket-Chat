@@ -100,6 +100,7 @@ class OfflineSummaryRetryCoordinatorTest {
     private fun coordinator() = OfflineSummaryRetryCoordinator(
         conversationRepo, messageRepo, characterRepo, memoryRepo, contextLog,
         apiConfigRepo, sessionExtractor, healStore, promiseLedgerService, userProfileDao,
+        mockk(relaxed = true), // [zCODE] P1·第2项：storyStateRepository（回流登记 runCatching 容错）
     )
 
     /** completion 有默认参 → 生产侧经 $default 路由（记录 9 参虚方法调用）：stub 须给全 9 个匹配器。 */

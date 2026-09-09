@@ -71,6 +71,7 @@ class MomentInteractionService @Inject constructor(
     private val userProfileDao: UserProfileDao,
     private val scheduleDao: ScheduleDao,
     private val conversationDao: ConversationDao,
+    private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项 读取处3
 ) {
 
     /**
@@ -502,6 +503,14 @@ class MomentInteractionService @Inject constructor(
         nowMillis: Long,
         zone: ZoneId,
     ): String? {
+        // [zCODE] P1·第2项 读取处3：跨角色互动位置校验（F1 验收②——跨港不互动）。帖主是另一角色时，双方取
+        // AGING 内锚点：一方 sailing（海上）另一方在陆地（ashore/indoors）→ 物理不可能同场互动，跳过本次评论。
+        // 任一方无锚点/超龄 → 放行（fail-open）；用户帖不校验（用户不参与海陆物理约束）。
+        val postAuthorUuid = post.characterUuid?.takeIf { post.authorTypeRaw == MomentAuthorType.CHARACTER.raw && it != character.uuid }
+        if (postAuthorUuid != null && anchorsIncompatible(character.uuid, postAuthorUuid, nowMillis)) {
+            android.util.Log.i(TAG, "跨角色互动位置不相容，跳过评论（${character.name.take(6)} vs ${characterNames[postAuthorUuid]?.take(6)}）")
+            return null
+        }
         val postAuthorName = if (post.authorTypeRaw == MomentAuthorType.USER.raw) {
             userNickname
         } else {
@@ -564,6 +573,23 @@ class MomentInteractionService @Inject constructor(
         )
         // 脏数据门（1:1 iOS GeneratedContentValidator）：非正文（Token count/{"error"}/纯数字…）→ null 不入库。
         return MemoryService.strippingThinkingTags(buffer).takeIf { GeneratedContentValidator.isLikelyValid(it) }
+    }
+
+    /**
+     * [zCODE] P1·第2项 读取处3：双方锚点海陆相容性（F1 验收②）。任一方无 AGING 内锚点 → false（fail-open）；
+     * 仅「海上 ↔ 陆地」判不相容（docked↔ashore 弱冲突不判，避免误杀）。
+     */
+    private suspend fun anchorsIncompatible(uuidA: String, uuidB: String, nowMillis: Long): Boolean {
+        val maxAge = com.situ.aichat.prompt.AnchorVocabulary.AGING_MAX_AGE_MS
+        val a = runCatching { storyStateRepository.freshAnchorFor(uuidA, maxAgeMs = maxAge, nowMillis = nowMillis) }.getOrNull() ?: return false
+        val b = runCatching { storyStateRepository.freshAnchorFor(uuidB, maxAgeMs = maxAge, nowMillis = nowMillis) }.getOrNull() ?: return false
+        val sa = com.situ.aichat.prompt.AnchorVocabulary.MotionState.fromRaw(a.motionStateRaw)
+        val sb = com.situ.aichat.prompt.AnchorVocabulary.MotionState.fromRaw(b.motionStateRaw)
+        val onLand = { s: com.situ.aichat.prompt.AnchorVocabulary.MotionState ->
+            s == com.situ.aichat.prompt.AnchorVocabulary.MotionState.ASHORE || s == com.situ.aichat.prompt.AnchorVocabulary.MotionState.INDOORS
+        }
+        return (sa == com.situ.aichat.prompt.AnchorVocabulary.MotionState.SAILING && onLand(sb)) ||
+            (sb == com.situ.aichat.prompt.AnchorVocabulary.MotionState.SAILING && onLand(sa))
     }
 
     /**

@@ -145,14 +145,17 @@ class ScheduleLivenessContextCollectorTest {
 
     @Test
     fun `余温_昨天见面进块_三天前不进_取最近一次`() = runBlocking {
+        // [zCODE] P1·第2项 日期归属修后：dayWord 以**真实 now** 为界（今天/昨天/前天）——夹具须锚定真实今天，
+        // 固定历史日期会让全部样本落"前天"（类级 dayStart=2026-07-10 是为 E17 摘要准备的，此处不复用）。
+        val realTodayStart = java.time.LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
         fun memory(startedAt: Long, activity: String) = OfflineMeetingMemoryEntity(
             uuid = UUID.randomUUID().toString(), characterUuid = uuid, startedAtMillis = startedAt,
             location = "公园", activity = activity, createdAtMillis = 1L, updatedAtMillis = 1L,
         )
-        db.offlineMeetingMemoryDao().upsert(memory(dayStart - 3 * 86_400_000L, "三天前"))
-        db.offlineMeetingMemoryDao().upsert(memory(dayStart - 30 * 3_600_000L, "前天夜里"))
-        db.offlineMeetingMemoryDao().upsert(memory(dayStart - 10 * 3_600_000L, "昨天"))
-        val ctx = collector.collectFor(uuid, dayStart, zone)
+        db.offlineMeetingMemoryDao().upsert(memory(realTodayStart - 3 * 86_400_000L, "三天前"))
+        db.offlineMeetingMemoryDao().upsert(memory(realTodayStart - 30 * 3_600_000L, "前天夜里"))
+        db.offlineMeetingMemoryDao().upsert(memory(realTodayStart - 10 * 3_600_000L, "昨天"))
+        val ctx = collector.collectFor(uuid, realTodayStart, zone)
         val afterglow = ctx.recentMeetingAfterglow!!
         assertEquals("昨天", afterglow.dayWord)
         assertEquals("昨天", afterglow.activity)

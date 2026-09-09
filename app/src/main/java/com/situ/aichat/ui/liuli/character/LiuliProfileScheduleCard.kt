@@ -110,6 +110,15 @@ private fun ContentCard(state: ScheduleCardState.Content, onOpenFullDay: () -> U
     val colors = AppTheme.colors
     StateCard(modifier = modifier, weatherLabel = state.weatherLabel) {
         Column {
+            // [zCODE] P1·第2项 读取处4：锚点优先当前状态行（同暖陶 ContentCard·分级措辞见 ScheduleCardState.AnchorStatusLine）。
+            state.anchorLine?.let { line ->
+                Text(
+                    line.text,
+                    style = AppTypography.listPreview,
+                    color = if (line.fromAnchor) colors.accent.text else colors.text.secondary,
+                    maxLines = 1,
+                )
+            }
             state.rows.forEachIndexed { index, row ->
                 ScheduleEventRow(event = row.event, timeState = row.timeState, isLast = index == state.rows.lastIndex)
             }

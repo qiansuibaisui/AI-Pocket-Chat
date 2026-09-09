@@ -58,8 +58,24 @@ sealed interface ScheduleCardState {
     data object Hidden : ScheduleCardState
     data object Loading : ScheduleCardState
     data object Failed : ScheduleCardState
-    data class Content(val rows: List<ScheduleRow>, val weatherLabel: String?) : ScheduleCardState
+
+    /**
+     * [zCODE] P1·第2项 读取处4：anchorLine = 锚点优先的当前状态行；null = 无锚点/超龄 → 回落「行程显示：」
+     * （分级措辞·评审附加条件2——旧日程不得伪装实时近况）。默认 null = 既有调用/测试零波及。
+     */
+    data class Content(
+        val rows: List<ScheduleRow>,
+        val weatherLabel: String?,
+        val anchorLine: AnchorStatusLine? = null,
+    ) : ScheduleCardState
 }
+
+/** [zCODE] 读取处4：名片/近况当前状态行（锚点派生优先，措辞在 VM 侧定级、渲染层只画）。 */
+data class AnchorStatusLine(
+    val text: String,
+    /** true = 系统登记锚点（实时）；false = 日程回落（计划参考·非实时）。 */
+    val fromAnchor: Boolean,
+)
 
 /**
  * 资料页【今日行程】卡（P14.2a）。1:1 iOS `ScheduleTimelineCard`：标题 + 紧凑天气标签（无 key 降级不显）+
@@ -126,6 +142,18 @@ private fun ContentCard(
             })
 
             Column {
+                // [zCODE] P1·第2项 读取处4：锚点优先当前状态行（fresh/aging「当前：…」；无锚点回落「行程显示：」
+                // 首个已开始事件——分级措辞·附加条件2，旧日程不伪装实时）。锚点缺失且无已开始事件时 VM 侧整卡
+                // 已 Hidden，此行仅在有 rows 时与锚点行二选一出现。
+                state.anchorLine?.let { line ->
+                    Text(
+                        line.text,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (line.fromAnchor) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 state.rows.forEachIndexed { index, row ->
                     ScheduleEventRow(
                         event = row.event,

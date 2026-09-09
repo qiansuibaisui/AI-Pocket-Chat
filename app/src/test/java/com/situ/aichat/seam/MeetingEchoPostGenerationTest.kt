@@ -98,6 +98,7 @@ class MeetingEchoPostGenerationTest {
         petShopQueue = mockk(relaxed = true), petRepository = mockk(relaxed = true),
         newPostNotifier = newPostNotifier, userProfileDao = userProfileDao,
         conversationDao = mockk(relaxed = true),
+        storyStateRepository = mockk(relaxed = true), // [zCODE] P1·第2项 读取处3（锚点获取 runCatching 容错）
     )
 
     private fun stubLlm(vararg replies: String) {

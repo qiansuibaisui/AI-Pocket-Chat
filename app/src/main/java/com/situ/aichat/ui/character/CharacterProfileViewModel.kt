@@ -99,6 +99,7 @@ class CharacterProfileViewModel @Inject constructor(
     private val manualMemoryOrganize: ManualMemoryOrganizeService,
     // 卷一 F4：见面回忆卡摘要走行 override（与回忆长廊同源）。
     private val offlineMeetingMemoryRepository: OfflineMeetingMemoryRepository,
+    private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项 读取处4
 ) : ViewModel() {
 
     val characterUuid: String = savedStateHandle.get<String>(ARG_CHARACTER_UUID).orEmpty()
@@ -328,13 +329,19 @@ class CharacterProfileViewModel @Inject constructor(
                 else scheduleDao.observeEventsForSchedule(sched.uuid).map { sched to it }
             }
 
+    /** [zCODE] 读取处4：当前锚点快照流（实时驱动名片状态行）。声明须在 scheduleCard 之前（前向引用编译错）。 */
+    private val anchorSnapshotFlow: kotlinx.coroutines.flow.Flow<com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity?> =
+        storyStateRepository.observeCurrentAnchor(characterUuid)
+
     /**
      * 资料页日程卡状态（1:1 iOS `ScheduleTimelineCard` 分支）：有正式日程且有已开始事件→内容；
      * 有日程但无已开始事件→隐藏；失败集含本角色→失败；否则→加载。失败集 / Room 数据任一变即重算。
+     * [zCODE] P1·第2项 读取处4：并入锚点流——当前状态行锚点优先派生（fresh/aging「当前：…」），
+     * 无锚点/超龄回落「行程显示：」分级措辞（附加条件2·旧日程不伪装实时）。
      */
     val scheduleCard: StateFlow<ScheduleCardState> =
-        combine(scheduleWithEvents, scheduleCoordinator.failedCharacterUuids) { (sched, events), failed ->
-            deriveScheduleCard(sched, events, failed.contains(characterUuid))
+        combine(scheduleWithEvents, scheduleCoordinator.failedCharacterUuids, anchorSnapshotFlow) { (sched, events), failed, anchor ->
+            deriveScheduleCard(sched, events, failed.contains(characterUuid), anchor)
         }.flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScheduleCardState.Loading)
 
@@ -342,6 +349,7 @@ class CharacterProfileViewModel @Inject constructor(
         schedule: CharacterDailyScheduleEntity?,
         events: List<ScheduleEventEntity>,
         failed: Boolean,
+        anchor: com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity? = null,
     ): ScheduleCardState {
         // 1:1 iOS ScheduleTimelineCard（L16-53）：闸门是「日程行是否存在」而非 generatedAt——任意行（含
         // generatedAt==null 的空壳，如线下见面预建并追加已开始事件）存在即按已开始事件渲染（空→整卡隐藏）；
@@ -356,9 +364,26 @@ class CharacterProfileViewModel @Inject constructor(
                 weatherLabel = ScheduleTimelineLogic.compactWeatherLabel(
                     schedule.cityName, schedule.weatherEmoji, schedule.weatherCondition,
                 ),
+                anchorLine = deriveAnchorLine(anchor, selected.firstOrNull()),
             )
         }
         return if (failed) ScheduleCardState.Failed else ScheduleCardState.Loading
+    }
+
+    /** [zCODE] 读取处4：锚点 fresh/aging →「当前：」实时行；否则回落「行程显示：」首事件（分级措辞·附加条件2）。 */
+    private fun deriveAnchorLine(
+        anchor: com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity?,
+        fallbackEvent: ScheduleEventEntity?,
+    ): AnchorStatusLine? {
+        val now = System.currentTimeMillis()
+        if (anchor != null &&
+            com.situ.aichat.prompt.AnchorVocabulary.freshnessOf(anchor.effectiveAt, now) != com.situ.aichat.prompt.AnchorVocabulary.FreshnessLevel.STALE
+        ) {
+            val detail = listOf(anchor.eventName, anchor.locationRaw).filter { it.isNotBlank() }.joinToString("·")
+            return AnchorStatusLine("当前：$detail", fromAnchor = true)
+        }
+        val fallback = fallbackEvent?.activity?.takeIf { it.isNotBlank() } ?: return null
+        return AnchorStatusLine("行程显示：$fallback（计划，非实时位置）", fromAnchor = false)
     }
 
     /** 日程卡「生成失败→重试」：仅重生本角色今日（1:1 iOS manualRetry）；成功后 Room Flow 自动刷新卡片。 */

@@ -315,6 +315,11 @@ object PromptBuilder {
          * 前置→历史→后置就地排序。不影响返回的消息本身。
          */
         segmentSink: MutableList<ContextSegment>? = null,
+        /** [zCODE] P1·第2项 读取处1：当前剧情锚点快照（StoryStateRepository 预取·null = 未建档 → 位置行不注入）。
+         *  注入为**常开直追加**（系统提示词尾部·不经模块开关体系——评审裁决2：锚点注入是治理功效输出口，开关会使验收不可复现）。 */
+        storyAnchor: com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity? = null,
+        /** [zCODE] P1·第2项 读取处1：近 24h 已完成事件清单（同上预取·空 = 清单段不注入）。 */
+        completedEvents: List<com.situ.aichat.data.local.entity.StoryEventLedgerEntity> = emptyList(),
     ): List<ChatMessageDto> {
         val chatMessages = mutableListOf<ChatMessageDto>()
 
@@ -403,7 +408,11 @@ object PromptBuilder {
             recentCharacterLines = recentCharacterLines,
         )
         if (systemPrompt.isNotEmpty()) {
-            chatMessages.add(ChatMessageDto(role = ROLE_SYSTEM, content = systemPrompt))
+            // [zCODE] P1·第2项 读取处1：剧情锚点 + 已执行事件清单——常开直追加（字段过 AnchorInjectionBuilder 防御：
+            // 40 字符截断 + 换行折叠，评审附加条件4）。双空 → buildModule 返回 ""，零改既有输出。
+            val anchorBlock = AnchorInjectionBuilder.buildModule(storyAnchor, completedEvents, now.toEpochMilli())
+            val finalSystem = if (anchorBlock.isEmpty()) systemPrompt else "$systemPrompt\n\n$anchorBlock"
+            chatMessages.add(ChatMessageDto(role = ROLE_SYSTEM, content = finalSystem))
         }
 
         // 2.05 线下事件元数据注入 — TODO(M16) OfflineEventSummarizer；当前无线下消息，恒空。

@@ -233,6 +233,7 @@ class AssistantTurnEngineTest {
             promiseToolHandler = promiseToolHandler,
             ourDayRepository = ourDayRepository, // 我们的日子·卷二 T2-4
             meetingAppointmentStore = mockk(relaxed = true),
+            storyStateRepository = mockk(relaxed = true), // [zCODE] P1·第2项（锚点预取 runCatching 容错→null=零变化）
             // WB4：本测试族不测世界书——stub 成「无书」保持既有断言语义（activateForTurn 恒 null = 装配零变化）。
             worldBookPromptService = mockk {
                 coEvery { activateForTurn(any(), any(), any(), any(), any(), any(), any()) } returns null

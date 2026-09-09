@@ -50,25 +50,44 @@ object MomentPromptContext {
      *
      * 1:1 iOS：当前状态 + 下一项 + 过去「有趣事件」(有同伴/天气微调/非在家) 或最近 2 件作为素材 + 硬约束块。
      * 过滤 userInteraction（聊天写回/线下记录），与 `PromptBuilderSchedule` 一致。
+     *
+     * [zCODE] P1·第2项 读取处3：**当前状态行强制锚点优先**（fresh/aging 时系统登记锚点取代日程派生位置——
+     * F1 根因切断：朋友圈位置不再来自生成的日程）；anchor null/超龄 → 回落日程现状（fail-open·老角色零波及）。
+     * 无日程但有锚点 → 仍出锚点行（usable.isEmpty 不再短路）。
      */
     fun buildSchedulePromptText(
         events: List<ScheduleEventEntity>,
         nowMillis: Long,
         zone: ZoneId,
         characterName: String,
+        anchor: com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity? = null,
     ): String {
         val usable = events.filter { it.eventTypeRaw != EVENT_TYPE_USER_INTERACTION }
-        if (usable.isEmpty()) return ""
 
         val lines = mutableListOf<String>()
 
-        // 当前活动
+        // [zCODE] 锚点优先的当前状态行（系统登记·真实位置）
+        val anchorFreshEnough = anchor != null &&
+            com.situ.aichat.prompt.AnchorVocabulary.freshnessOf(anchor.effectiveAt, nowMillis) !=
+                com.situ.aichat.prompt.AnchorVocabulary.FreshnessLevel.STALE
+        if (anchor != null && anchorFreshEnough) {
+            val loc = anchor.locationRaw.ifBlank { "位置未记录" }
+            var line = "【当前状态·系统登记】${characterName}当前：${anchor.eventName.ifBlank { "在$loc" }}"
+            if (anchor.eventName.isNotBlank()) line += "（在$loc）"
+            lines.add(line)
+        }
+
+        // 当前活动（日程派生·仅锚点缺失/超龄时作为当前状态行；否则降为「日程计划」参考行）
         val current = usable.firstOrNull { it.startTime <= nowMillis && nowMillis <= it.endTime }
         if (current != null) {
-            var line = "【当前状态】${characterName}正在：${current.activity}"
-            if (current.location.isNotEmpty()) line += "（在${current.location}）"
-            current.moodText?.takeIf { it.isNotEmpty() }?.let { line += "，心情：$it" }
-            lines.add(line)
+            if (!anchorFreshEnough) {
+                var line = "【当前状态】${characterName}正在：${current.activity}"
+                if (current.location.isNotEmpty()) line += "（在${current.location}）"
+                current.moodText?.takeIf { it.isNotEmpty() }?.let { line += "，心情：$it" }
+                lines.add(line)
+            } else {
+                lines.add("（日程计划参考）这个时段原本安排：${current.activity}")
+            }
         }
 
         // 下一个活动（moments-logic-2：对齐 iOS CharacterDailySchedule.sortedEvents 的 (sortOrder, startTime) 次序，
@@ -106,6 +125,7 @@ object MomentPromptContext {
         // 硬约束：朋友圈必须与日程状态一致
         lines.add("")
         lines.add("【重要约束】你发的朋友圈必须与你当前的日程状态一致：")
+        if (anchorFreshEnough) lines.add("- 你的实际位置以上方【当前状态·系统登记】为准，日程只是计划参考")
         lines.add("- 你只能发与你正在做的事、刚做完的事、或此刻的心情相关的内容")
         lines.add("- 不要发与你当前时间和活动明显矛盾的内容（比如你在上班却发在家的内容）")
         lines.add("- 优先挑一件有趣、具体、值得分享的事来发，不要逐条复述行程")

@@ -3,6 +3,7 @@ package com.situ.aichat.data.repository
 import com.situ.aichat.data.local.dao.StoryStateDao
 import com.situ.aichat.data.local.entity.AnchorSource
 import com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity
+import com.situ.aichat.data.local.entity.StoryEventSource
 import com.situ.aichat.prompt.AnchorBlockParser
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -22,7 +23,8 @@ import org.junit.Test
 class StoryStateRepositoryTest {
 
     private val dao = mockk<StoryStateDao>(relaxed = true)
-    private val repo = StoryStateRepository(dao)
+    private val scheduleDao = mockk<com.situ.aichat.data.local.dao.ScheduleDao>(relaxed = true)
+    private val repo = StoryStateRepository(dao, scheduleDao)
 
     private fun previous(effectiveAt: Long, capturedAt: Long) = StoryAnchorSnapshotEntity(
         characterUuid = "char-1", conversationUuid = "conv-1",
@@ -129,5 +131,34 @@ class StoryStateRepositoryTest {
     @Test fun ledger_rejects_blank_key() = runTest {
         repo.recordCompletedEvent(listOf("c1"), emptyMap(), eventKey = "  ", description = "x")
         coVerify(exactly = 0) { dao.insertLedger(any()) }
+    }
+
+    // ── 读取处5：storyLedger 星标通道（评审附加条件3——source 边界常量） ──
+
+    @Test fun ledger_offline_meeting_inserts_schedule_star_event() = runTest {
+        coEvery { dao.insertLedger(any()) } returns 1L
+        coEvery { scheduleDao.scheduleFor("c1", any()) } returns null
+        coEvery { scheduleDao.eventsForSchedule(any()) } returns emptyList()
+
+        repo.recordCompletedEvent(listOf("c1"), emptyMap(), "meeting-s1", "见面完成", source = StoryEventSource.OFFLINE_MEETING)
+
+        val events = slot<List<com.situ.aichat.data.local.entity.ScheduleEventEntity>>()
+        coVerify { scheduleDao.insertEvents(capture(events)) }
+        assertEquals("storyLedger", events.captured.single().eventTypeRaw)
+        assertEquals("✓", events.captured.single().moodEmoji)
+    }
+
+    @Test fun ledger_dialog_ack_never_inserts_star() = runTest {
+        // 附加条件3：聊天随口确认（dialog_ack）不插星标——避免日程表被闲聊塞满
+        coEvery { dao.insertLedger(any()) } returns 1L
+        repo.recordCompletedEvent(listOf("c1"), emptyMap(), "ack-1", "随口确认", source = StoryEventSource.DIALOG_ACK)
+        coVerify(exactly = 0) { scheduleDao.insertEvents(any()) }
+    }
+
+    @Test fun ledger_duplicate_registration_skips_star() = runTest {
+        // 唯一索引命中（rowId=-1 = 重复登记）→ 不插星标（幂等）
+        coEvery { dao.insertLedger(any()) } returns -1L
+        repo.recordCompletedEvent(listOf("c1"), emptyMap(), "meeting-s1", "见面完成", source = StoryEventSource.OFFLINE_MEETING)
+        coVerify(exactly = 0) { scheduleDao.insertEvents(any()) }
     }
 }

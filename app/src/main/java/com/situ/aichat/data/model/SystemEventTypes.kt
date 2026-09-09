@@ -26,7 +26,10 @@ enum class SystemEventType(val raw: String) {
     /** 红包被接收方拒收（主路径：character 拒收 user 的红包）。 */
     RED_PACKET_REJECTED("red_packet_rejected"),
     /** 红包 24h 未拆自动过期（主路径：user 没拆 character 发的红包）。 */
-    RED_PACKET_EXPIRED("red_packet_expired");
+    RED_PACKET_EXPIRED("red_packet_expired"),
+
+    /** [zCODE] P1·第2项 B1·场景节点通知：锚点 MotionState/locationKey 变更 → 聊天流轻量系统条（⚓ 居中灰字，复用红包系统卡样式）。 */
+    SCENE_UPDATE("scene_update");
 
     /** 是否红包类事件（分派 UI 样式 / llmRepresentation 文案，1:1 iOS `isRedPacketEvent`）。 */
     val isRedPacketEvent: Boolean
@@ -83,6 +86,19 @@ object SystemEventJson {
 }
 
 // ── 红包系统事件 factory + 文案（纯函数，便于单测，1:1 iOS） ──────────────────
+
+/** [zCODE] P1·第2项 B1：场景节点通知条（⚓ 居中灰字轻量系统条；title =「场景更新：{事件}·{位置}」）。 */
+fun makeSceneUpdateEventData(eventName: String, locationRaw: String, timestampMillis: Long): SystemEventData = SystemEventData(
+    type = "system_event",
+    eventType = SystemEventType.SCENE_UPDATE.raw,
+    title = buildString {
+        append("场景更新")
+        val detail = listOf(eventName.trim(), locationRaw.trim()).filter { it.isNotEmpty() }.joinToString("·")
+        if (detail.isNotEmpty()) append("：").append(detail)
+    }.take(40), // 与注入防御同口径：模型原文截断
+    emoji = "⚓",
+    timestamp = ISO_TS.format(Instant.ofEpochMilli(timestampMillis)),
+)
 
 private val ISO_TS: DateTimeFormatter = DateTimeFormatter.ISO_INSTANT
 

@@ -73,4 +73,16 @@ object AnchorVocabulary {
         }
         return Normalized(MotionState.UNKNOWN, null)
     }
+
+    /**
+     * [zCODE] P1·第2项 B1：锚点节点变更判定（MotionState 或归一 locationKey 变化）。carryover（内容原样延续）
+     * 天然不触发；首次建档（prev=null）不算变更。纯函数供 Deliverer 通知与单测共用。
+     */
+    fun anchorChanged(
+        prev: com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity?,
+        next: com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity,
+    ): Boolean {
+        if (prev == null) return false
+        return prev.motionStateRaw != next.motionStateRaw || prev.locationKey != next.locationKey
+    }
 }

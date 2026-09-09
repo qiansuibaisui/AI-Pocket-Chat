@@ -79,6 +79,7 @@ class MomentsMeetingGateTest {
             messageDao = messageDao, contextLog = mockk(relaxed = true),
             llmSlot = mockk(relaxed = true), userProfileDao = mockk(relaxed = true),
             scheduleDao = mockk(relaxed = true), conversationDao = conversationDao,
+            storyStateRepository = mockk(relaxed = true), // [zCODE] P1·第2项 读取处3
         )
         MomentPendingInteractionStore.save(context, emptyList())
     }
@@ -144,6 +145,7 @@ class MomentsMeetingGateTest {
             petShopQueue = mockk(relaxed = true), petRepository = mockk(relaxed = true),
             newPostNotifier = mockk(relaxed = true), userProfileDao = mockk(relaxed = true),
             conversationDao = conversationDao,
+            storyStateRepository = mockk(relaxed = true), // [zCODE] P1·第2项 读取处3
         )
     }
 

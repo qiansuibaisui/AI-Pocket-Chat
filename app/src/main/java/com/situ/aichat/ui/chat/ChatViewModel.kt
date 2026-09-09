@@ -750,6 +750,7 @@ class ChatViewModel @Inject constructor(
         promiseToolHandler = promiseToolHandler,
         ourDayRepository = ourDayRepository,
         meetingAppointmentStore = meetingAppointmentStore,
+        storyStateRepository = storyStateRepository, // [zCODE] P1·第2项：锚点中央登记读 API
         errorFlow = _error,
         infoToastFlow = _infoToast,
         isDelivering = _isDelivering,

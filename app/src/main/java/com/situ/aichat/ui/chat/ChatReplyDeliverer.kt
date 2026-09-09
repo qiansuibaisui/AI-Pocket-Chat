@@ -261,16 +261,34 @@ internal class ChatReplyDeliverer(
      * - 失败绝不影响投递（runCatching 吞 + 记日志——锚点是增强数据，不是回复本体）；
      * - 卡片/日历独占回复（无正文 early-return 路径）不记录：无 stored 消息即无幂等键，且模型未叙事、位置大概率未述，
      *   交下一回合 carryover。
+     * - [zCODE] B1 节点通知：落库行相对上一快照 MotionState/locationKey 变更 → 聊天流插 ⚓ 轻量系统条
+     *   （复用 SYSTEM_EVENT_CARD 居中灰字·时间戳 = 末条消息 +1 保证在其后）。不区分变更来源（本阶段仅 dialog 通道，
+     *   manual/director 是 P3/P4 接入时再议通知口径）；carryover 内容原样 → anchorChanged 天然 false 不刷屏。
      */
     private suspend fun recordTurnAnchor(characterUuid: String, anchor: com.situ.aichat.prompt.AnchorBlockParser.AnchorBlock?, stored: List<com.situ.aichat.data.local.entity.MessageEntity>) {
         val turnEndMessageUuid = stored.lastOrNull()?.messageUUID ?: return
         runCatching {
-            storyStateRepository.recordTurnAnchor(
+            val previous = storyStateRepository.currentAnchorFor(characterUuid)
+            val saved = storyStateRepository.recordTurnAnchor(
                 characterUuid = characterUuid,
                 conversationUuid = conversationUuid,
                 anchor = anchor,
                 turnEndMessageUuid = turnEndMessageUuid,
             )
+            if (saved != null && com.situ.aichat.prompt.AnchorVocabulary.anchorChanged(previous, saved)) {
+                messageRepo.upsert(
+                    com.situ.aichat.data.local.entity.MessageEntity(
+                        messageUUID = java.util.UUID.randomUUID().toString(),
+                        conversationUuid = conversationUuid,
+                        roleRaw = "system",
+                        content = com.situ.aichat.data.model.SystemEventJson.encode(
+                            com.situ.aichat.data.model.makeSceneUpdateEventData(saved.eventName, saved.locationRaw, saved.capturedAt),
+                        ),
+                        timestamp = stored.last().timestamp + 1,
+                        messageKindRaw = com.situ.aichat.data.model.MessageKind.SYSTEM_EVENT_CARD.raw,
+                    ),
+                )
+            }
         }.onFailure { Log.w(TAG, "锚点落库失败（不影响投递）: ${it.message}") }
     }
 

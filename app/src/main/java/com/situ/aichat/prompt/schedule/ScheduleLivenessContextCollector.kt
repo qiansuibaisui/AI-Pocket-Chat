@@ -132,7 +132,7 @@ class ScheduleLivenessContextCollector @Inject constructor(
         val latest = offlineMeetingMemoryDao.byCharacter(characterUuid)
             .filter { it.kindRaw == MEETING_KIND && it.startedAtMillis in windowStart until dayStart }
             .maxByOrNull { it.startedAtMillis } ?: return null
-        val dayWord = if (latest.startedAtMillis >= yesterdayStart) "昨天" else "前天"
+        val dayWord = afterglowDayWord(latest.startedAtMillis, dayStart, zone)
         return ScheduleLivenessContext.AfterglowLine(dayWord, latest.location, latest.activity)
     }
 
@@ -168,5 +168,22 @@ class ScheduleLivenessContextCollector @Inject constructor(
         /** 面向 LLM 的日期/时刻格式器统一 Locale.ROOT（PITFALLS §1c 先例）。 */
         val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M月d日", Locale.ROOT)
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT)
+    }
+}
+
+/**
+ * [zCODE] P1·第2项 读取处2 顺带修（日期归属）：余温 dayWord 三分——生成**未来日**日程时，窗口含"今天"发生的
+ * 见面（dayStart=明天 0 点 > 今天），旧二分法把它判成「昨天」（当天聊天被标昨天·实测在案）。修正：以**真实今天**
+ * （now 的当日 0 点）为界，今天发生的见面标「今天」。顶层纯函数便于单测。
+ */
+internal fun afterglowDayWord(startedAtMillis: Long, dayStart: Long, zone: ZoneId, nowMillis: Long = System.currentTimeMillis()): String {
+    // 分界全部以 **now 视角** 为准（用户读到的"今天/昨天"）：dayStart（被生成的目标日）只决定上游窗口取舍，
+    // 不参与措辞分界——否则生成明日日程时，昨日见面会被目标日视角误判成"前天"。
+    val todayStart = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
+    val yesterdayStart = todayStart - 86_400_000L // 近似一日（措辞粒度足够；严格跨 DST 由上 LocalDate 路径兜底）
+    return when {
+        startedAtMillis >= todayStart -> "今天"
+        startedAtMillis >= yesterdayStart -> "昨天"
+        else -> "前天"
     }
 }

@@ -28,6 +28,7 @@ import kotlin.math.max
 @Singleton
 class StoryStateRepository @Inject constructor(
     private val dao: StoryStateDao,
+    private val scheduleDao: com.situ.aichat.data.local.dao.ScheduleDao, // [zCODE] 读取处5：storyLedger 星标通道
 ) {
 
     /**
@@ -159,8 +160,10 @@ class StoryStateRepository @Inject constructor(
         if (key.isEmpty()) return
         withContext(Dispatchers.IO) {
             characterUuids.forEach { char ->
-                dao.insertLedger(
+                val ledgerUuid = java.util.UUID.randomUUID().toString()
+                val rowId = dao.insertLedger(
                     StoryEventLedgerEntity(
+                        uuid = ledgerUuid,
                         characterUuid = char,
                         conversationUuid = conversationUuids[char].orEmpty(),
                         eventKey = key,
@@ -170,8 +173,48 @@ class StoryStateRepository @Inject constructor(
                         relatedMessageUUID = relatedMessageUUID,
                     ),
                 )
+                // [zCODE] P1·第2项 读取处5：日程补丁星标通道（eventTypeRaw="storyLedger"·复用见面星标视觉）。
+                // **幂等键边界（评审附加条件3）**：仅 OFFLINE_MEETING / DIRECTOR 级登记才插星标——dialog_ack
+                // （聊天里随口确认）不插，避免日程表被闲聊塞满；常量判断集中此处。rowId == -1L = 唯一索引命中
+                // （重复登记）→ 跳过插入，天然幂等；relatedMessageUUID = ledger uuid（同事件不重复插的追溯锚）。
+                if (rowId != -1L && source in SCHEDULE_STAR_SOURCES) {
+                    runCatching { insertScheduleStarEvent(char, description, ledgerUuid, nowMillis) }
+                        .onFailure { Log.w(TAG, "storyLedger 星标插入失败（不影响登记）char=${char.take(8)}: ${it.message}") }
+                }
             }
         }
+    }
+
+    /** 今日日程 get-or-create + 追加 storyLedger 星标事件（范式抄 OfflineMeetingService.recordOfflineScheduleEvent）。 */
+    private suspend fun insertScheduleStarEvent(characterUuid: String, description: String, ledgerUuid: String, nowMillis: Long) {
+        val zone = java.time.ZoneId.systemDefault()
+        val todayStart = java.time.Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
+        val schedule = scheduleDao.scheduleFor(characterUuid, todayStart) ?: run {
+            val created = com.situ.aichat.data.local.entity.CharacterDailyScheduleEntity(
+                uuid = java.util.UUID.randomUUID().toString(),
+                characterUuid = characterUuid,
+                date = todayStart,
+            )
+            scheduleDao.insertSchedule(created)
+            created
+        }
+        val nextSortOrder = (scheduleDao.eventsForSchedule(schedule.uuid).maxOfOrNull { it.sortOrder } ?: -1) + 1
+        scheduleDao.insertEvents(
+            listOf(
+                com.situ.aichat.data.local.entity.ScheduleEventEntity(
+                    uuid = java.util.UUID.randomUUID().toString(),
+                    scheduleUuid = schedule.uuid,
+                    startTime = nowMillis,
+                    endTime = nowMillis,
+                    periodLabel = "已完成事件",
+                    activity = description.take(60),
+                    moodEmoji = "✓",
+                    eventTypeRaw = EVENT_TYPE_STORY_LEDGER,
+                    sortOrder = nextSortOrder,
+                    relatedMessageUUID = ledgerUuid,
+                ),
+            ),
+        )
     }
 
     // ── 读 API（评审点2 五处接入的数据源；本阶段先备好） ──
@@ -234,5 +277,11 @@ class StoryStateRepository @Inject constructor(
 
     private companion object {
         const val TAG = "StoryStateRepo"
+
+        /** [zCODE] 读取处5（评审附加条件3）：仅这两级登记插日程星标——dialog_ack（聊天随口确认）不插。 */
+        val SCHEDULE_STAR_SOURCES = setOf(StoryEventSource.OFFLINE_MEETING, StoryEventSource.DIRECTOR)
+
+        /** [zCODE] 读取处5：星标事件类型值（复用见面星标视觉家族；String 列新值零 schema 变更，同 P0 superseded 先例）。 */
+        const val EVENT_TYPE_STORY_LEDGER = "storyLedger"
     }
 }
