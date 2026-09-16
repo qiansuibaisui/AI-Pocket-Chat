@@ -73,4 +73,36 @@ class AnchorInjectionBuilderTest {
         assertTrue(text.contains("事件4")) // 第 5 新仍在窗内
         assertFalse(text.contains("事件3")) // 超软上限 5 被裁（1~3 全裁）
     }
+
+    // ── LB-1/LB-3-C：回合内重生成 + 重开会面 防复读（会话全生命周期数据源） ──
+
+    @Test fun anti_repeat_segment_present_with_rule_and_steps() {
+        val now = 1_000_000L
+        val text = AnchorInjectionBuilder.buildModule(
+            null, emptyList(), now,
+            regenSteps = listOf("蜂蜜威士忌", "外套披肩", "萨奇留饭"),
+        )
+        assertTrue(text.contains("【防复读】"))
+        assertTrue(text.contains("不得复读同一节拍"))
+        assertTrue(text.contains("换一个推进角度"))
+        assertTrue(text.contains("- 蜂蜜威士忌"))
+        assertTrue(text.contains("- 萨奇留饭"))
+    }
+
+    @Test fun anti_repeat_omitted_when_steps_empty() {
+        val now = 1_000_000L
+        // 锚点在场 + 防复读清单空 → 有【剧情位置】无【防复读】
+        val text = AnchorInjectionBuilder.buildModule(anchor(now, now), emptyList(), now, regenSteps = emptyList())
+        assertTrue(text.contains("【剧情位置】"))
+        assertFalse(text.contains("【防复读】"))
+    }
+
+    @Test fun regen_steps_alone_renders_anti_repeat() {
+        // 重开会面场景：ledger 无记录（completedEvents 空）、锚点可能为 null——仅防复读清单也要出段（不重演开场节拍）
+        val now = 1_000_000L
+        val text = AnchorInjectionBuilder.buildModule(null, emptyList(), now, regenSteps = listOf("开场寒暄过一轮"))
+        assertTrue(text.isNotEmpty())
+        assertTrue(text.contains("【防复读】"))
+        assertTrue(text.contains("开场寒暄过一轮"))
+    }
 }

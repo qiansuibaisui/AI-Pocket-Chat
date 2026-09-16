@@ -342,7 +342,7 @@ class AssistantTurnControllerTest {
         assertEquals("user", slot.last().roleRaw)
         coVerify { conversationRepo.recordLastMessage("conv-1", "你好呀", "user", any()) }
         coVerify { vectorMemory.embedMessageIfNeeded(any()) } // C1 受理即嵌（窗回合 userMessageForEmbed=null）
-        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any()) }
+        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any(), any()) } // [zCODE] LB-1：+regenSteps 尾参
         assertFalse(isSending.value)
     }
 
@@ -380,7 +380,7 @@ class AssistantTurnControllerTest {
         isSending.value = true
         assertTrue(controller.send("x"))
         coVerify { messageRepo.upsert(any()) }
-        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any()) }
+        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any(), any()) } // [zCODE] LB-1：+regenSteps 尾参
     }
 
     @Test
@@ -412,7 +412,7 @@ class AssistantTurnControllerTest {
         controller.sendStickerMessage("sticker_42")
         coVerify { messageRepo.upsert(capture(slot)) }
         assertTrue(slot.last().content.contains("sticker_42"))
-        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any()) }
+        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any(), any()) } // [zCODE] LB-1：+regenSteps 尾参
     }
 
     // ────────────────────────── 发语音草稿 ──────────────────────────
@@ -446,7 +446,7 @@ class AssistantTurnControllerTest {
         assertEquals("早上好", stored.last().content)
         coVerify { conversationRepo.recordLastMessage("conv-1", "[语音] 早上好", "user", any()) }
         coVerify { voiceController.consumeDraftOnSend(any()) }
-        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any()) }
+        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any(), any()) } // [zCODE] LB-1：+regenSteps 尾参
     }
 
     // ────────────────────────── 重新生成 ──────────────────────────
@@ -460,7 +460,7 @@ class AssistantTurnControllerTest {
         coVerify { messageRepo.deleteByUuid("a1") }
         coVerify { messageRepo.deleteByUuid("a2") }
         coVerify(exactly = 0) { messageRepo.deleteByUuid("u1") } // 用户消息不删
-        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any()) }
+        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any(), any()) } // [zCODE] LB-1：+regenSteps 尾参
     }
 
     @Test
@@ -543,7 +543,7 @@ class AssistantTurnControllerTest {
     @Test
     fun 当前会话回合_happy_触发引擎() = runBlocking {
         controller.runAssistantTurnForCurrentConversation()
-        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any()) }
+        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any(), any()) } // [zCODE] LB-1：+regenSteps 尾参
     }
 
     // ────────────────────────── 断网重试 ──────────────────────────
@@ -561,7 +561,7 @@ class AssistantTurnControllerTest {
         coEvery { messageRepo.recentChronological("conv-1", 1) } returns listOf(userMsg())
         coEvery { recoveryClaimTracker.tryBegin("conv-1") } returns true
         controller.maybeAutoRetryAfterReconnect()
-        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any()) }
+        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any(), any()) } // [zCODE] LB-1：+regenSteps 尾参
         coVerify { recoveryClaimTracker.end("conv-1") }
     }
 
@@ -595,7 +595,7 @@ class AssistantTurnControllerTest {
         coEvery { offlineMeetingService.insertReturnAfterAwayHint(any(), any()) } returns true
         controller.autoRecoverUnansweredMessage(startDelayMs = 0)
         coVerify { offlineMeetingService.insertReturnAfterAwayHint("conv-1", 5L) }
-        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any()) }
+        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any(), any()) } // [zCODE] LB-1：+regenSteps 尾参
         verify { recoveryClaimTracker.end("conv-1") }
     }
 
@@ -614,7 +614,7 @@ class AssistantTurnControllerTest {
         controller.autoRecoverUnansweredMessage(startDelayMs = 0)
         // 真未答（被杀的线下回合）→ 通用恢复照跑；不插归来 hint。
         coVerify(exactly = 0) { offlineMeetingService.insertReturnAfterAwayHint(any(), any()) }
-        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any()) }
+        coVerify { assistantTurnEngine.runAssistantTurn(any(), any(), any(), any(), any(), any()) } // [zCODE] LB-1：+regenSteps 尾参
         verify { recoveryClaimTracker.end("conv-1") }
     }
 

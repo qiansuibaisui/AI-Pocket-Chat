@@ -467,6 +467,12 @@ internal class AssistantTurnController(
             // 审计 R1：删除循环 + 快照重算包 NonCancellable（镜像 ChatViewModel.deleteMessage）——点「重新生成」后
             // 立刻退出会话（VM 清理取消本 scope）时，绝不留下「删一半 + 预览停在已删消息」的半截状态；
             // 新回合本身仍可取消（用户已离开，无需重新生成）。
+            // [zCODE] LB-1：删除前捕获被删旧回复的段文本要点（assistant 段·每段截 60 字）——重生成注入【防复读】，
+            // 治"见面内重生成复读同序节拍"（ledger 无记录的窗口，只能拿被删正文当已输出事实源）。
+            val regenSteps = trailing
+                .filter { it.roleRaw == "assistant" }
+                .map { it.content.trim().take(60) }
+                .filter { it.isNotEmpty() }
             withContext(NonCancellable) {
                 trailing.forEach { messageRepo.deleteByUuid(it.messageUUID) }
                 // 删尾段后即刷新会话「最后一条」快照：新回合若失败，列表也不会停在已删的旧 AI 消息上（问题②同源）。
@@ -480,7 +486,7 @@ internal class AssistantTurnController(
             val userProfile = userProfileDao.get()
             isSending.value = true
             try {
-                assistantTurnEngine.runAssistantTurn(config, character, settings, userProfile, userMessageForEmbed = null)
+                assistantTurnEngine.runAssistantTurn(config, character, settings, userProfile, userMessageForEmbed = null, regenSteps = regenSteps)
             } finally {
                 isSending.value = false
             }

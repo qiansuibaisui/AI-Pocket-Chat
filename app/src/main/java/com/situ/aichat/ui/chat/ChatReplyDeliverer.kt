@@ -179,6 +179,8 @@ internal class ChatReplyDeliverer(
         val convo = conversationRepo.get(conversationUuid)
         val isOffline = convo?.isInOfflineMode == true
         val offlineSessionId = if (isOffline) convo.currentOfflineSessionId else null
+        // [zCODE] LB-3-A：线下正文解析质量探针（回合级一次·只记日志不改界面——观察 offline_parse_fail 复现频率）。
+        if (isOffline) com.situ.aichat.offline.OfflineParseQualityProbe.probe(effectiveRaw)
 
         val (petCleaned, _) = ReplyParser.extractPetSpeech(effectiveRaw) // 宠物发言提取（M11 接入后使用）
         // commit 7 前门：MiniMax speech-2.8 语音路径保留语气标签喂 TTS；其余路径继续无条件剥（对齐 iOS）。
@@ -237,7 +239,7 @@ internal class ChatReplyDeliverer(
                 val stored = deliverVoiceReply(stickerNormalized, character, voicePlan, emotionTag, mood.emoji, immediate, dotsAppearMillis)
                 if (stored.isNotEmpty()) {
                     finalizeDelivery(stored)
-                    recordTurnAnchor(character.uuid, pre.anchorBlock, stored)
+                    recordTurnAnchor(character.uuid, pre.anchorBlock, stored, raw)
                     notifyIfNotViewing(character, settings, stored, immediate, isOfflineConversation = isOffline)
                     return DeliveredTurn(stored, deliveredStructuredAction, meetingMarkerCandidates, promiseMarkerActions)
                 }
@@ -250,7 +252,7 @@ internal class ChatReplyDeliverer(
         val stored = deliverTextReply(stickerNormalized, settings, emotionTag, immediate, dotsAppearMillis, offlineSessionId)
         if (stored.isEmpty()) return DeliveredTurn(emptyList(), deliveredStructuredAction, meetingMarkerCandidates, promiseMarkerActions)
         finalizeDelivery(stored)
-        recordTurnAnchor(character.uuid, pre.anchorBlock, stored)
+        recordTurnAnchor(character.uuid, pre.anchorBlock, stored, raw)
         notifyIfNotViewing(character, settings, stored, immediate, isOfflineConversation = isOffline)
         return DeliveredTurn(stored, deliveredStructuredAction, meetingMarkerCandidates, promiseMarkerActions)
     }
@@ -265,14 +267,29 @@ internal class ChatReplyDeliverer(
      *   （复用 SYSTEM_EVENT_CARD 居中灰字·时间戳 = 末条消息 +1 保证在其后）。不区分变更来源（本阶段仅 dialog 通道，
      *   manual/director 是 P3/P4 接入时再议通知口径）；carryover 内容原样 → anchorChanged 天然 false 不刷屏。
      */
-    private suspend fun recordTurnAnchor(characterUuid: String, anchor: com.situ.aichat.prompt.AnchorBlockParser.AnchorBlock?, stored: List<com.situ.aichat.data.local.entity.MessageEntity>) {
+    private suspend fun recordTurnAnchor(
+        characterUuid: String,
+        anchor: com.situ.aichat.prompt.AnchorBlockParser.AnchorBlock?,
+        stored: List<com.situ.aichat.data.local.entity.MessageEntity>,
+        raw: String,
+    ) {
         val turnEndMessageUuid = stored.lastOrNull()?.messageUUID ?: return
         runCatching {
             val previous = storyStateRepository.currentAnchorFor(characterUuid)
+            // [zCODE] LB-3-B ③：正文有锚点**痕迹**但解析全败 → 不静默丢弃——记空锚点行（locationRaw 空·UNKNOWN·
+            // 时点=now，语义"模型刚输出过锚点但读不懂"）+ Log.w 计数与样本前 40 字（anchor_parse_fail#n），观察复现频率。
+            var effectiveAnchor = anchor
+            if (effectiveAnchor == null && raw.isNotBlank()) {
+                val traces = com.situ.aichat.prompt.AnchorBlockParser.anchorTraceCount(raw)
+                if (traces > 0) {
+                    android.util.Log.w(TAG, "anchor_parse_fail#$traces（有痕迹未解析出锚点，记空行）sample=${raw.replace(Regex("[\\r\\n]+"), " ").take(40)}")
+                    effectiveAnchor = com.situ.aichat.prompt.AnchorBlockParser.AnchorBlock(locationRaw = "")
+                }
+            }
             val saved = storyStateRepository.recordTurnAnchor(
                 characterUuid = characterUuid,
                 conversationUuid = conversationUuid,
-                anchor = anchor,
+                anchor = effectiveAnchor,
                 turnEndMessageUuid = turnEndMessageUuid,
             )
             if (saved != null && com.situ.aichat.prompt.AnchorVocabulary.anchorChanged(previous, saved)) {

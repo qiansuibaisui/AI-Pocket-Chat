@@ -3,6 +3,7 @@ package com.situ.aichat.prompt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** [zCODE] P1·第2项：对话内锚点块解析单测（写入通道①·容错层复用验证）。 */
@@ -63,5 +64,26 @@ class AnchorBlockParserTest {
         val all = AnchorBlockParser.parseBlocks("[场景：酒馆]一段 [场景：港口·午]二段")
         assertEquals(2, all.size)
         assertEquals(listOf("酒馆", "港口"), all.map { it.locationRaw })
+    }
+
+    // ── LB-3-B：内嵌形态 + 痕迹计数（解析失败不静默丢弃的前提） ──
+
+    @Test fun embedded_anchor_dash_led_and_tail_forms() {
+        // 破折号引导 + ｜在场名单（规范 v1 分隔符）——个人位置=首段，｜ 后在场名单点3 扩展
+        val b = AnchorBlockParser.parseLastBlock("他把杯子放下。————【锚点】甲板·白团海上旗舰｜贝克曼：不在场（酒馆）")
+        assertEquals("甲板", b!!.locationRaw)
+        assertEquals("白团海上旗舰", b.eventName)
+        // 混入叙事尾部（句末标点被剥）
+        val tail = AnchorBlockParser.parseLastBlock("两人沿着堤岸走了一段。【锚点】街道。")
+        assertEquals("街道", tail!!.locationRaw)
+    }
+
+    @Test fun anchor_trace_counts_marks_even_when_unparseable() {
+        // 有痕迹但畸形（空段/截断）→ traceCount>0（调用侧据此记空锚点行+日志，不静默丢弃）
+        assertTrue(AnchorBlockParser.anchorTraceCount("[场景：]") > 0)
+        assertTrue(AnchorBlockParser.anchorTraceCount("叙事————【锚点】") > 0)
+        assertTrue(AnchorBlockParser.anchorTraceCount("【场景状态】\n地点：") > 0)
+        // 干净正文 → 0
+        assertEquals(0, AnchorBlockParser.anchorTraceCount("普通叙事正文，没有任何锚点标记"))
     }
 }

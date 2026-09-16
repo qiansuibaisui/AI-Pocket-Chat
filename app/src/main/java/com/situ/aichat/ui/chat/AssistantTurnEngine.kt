@@ -165,6 +165,8 @@ internal class AssistantTurnEngine(
         settings: AppSettings,
         userProfile: UserProfileEntity?,
         userMessageForEmbed: MessageEntity?,
+        /** [zCODE] LB-1：重生成路径传入被删旧回复的段文本要点（注入【防复读】段；常规回合空=零变化）。 */
+        regenSteps: List<String> = emptyList(),
     ) {
         val userName = userProfile?.nickname ?: ""
         val convo = conversationRepo.get(conversationUuid) ?: return
@@ -271,6 +273,23 @@ internal class AssistantTurnEngine(
         val completedStoryEvents = runCatching {
             storyStateRepository.recentCompletedEvents(character.uuid, nowInstant.toEpochMilli() - AnchorVocabulary.AGING_MAX_AGE_MS)
         }.getOrDefault(emptyList())
+        // [zCODE] LB-1/LB-3-C·防复读数据源扩展为**会面全生命周期**：线下会话未完结期间，本会话已输出的全部
+        // assistant 段落要点（最近 12 条·每段 60 字）恒注入【防复读】——覆盖"回合内重生成"（被删旧输出由
+        // Controller regenSteps 补充）与"重开会面开场节拍原样重演"（LB-3-C）两个窗口；ledger 无记录的会话期
+        // 只能拿正文当已输出事实源。非线下（无 session）= 空，零变化。
+        val sessionSteps = if (convo.isInOfflineMode && convo.currentOfflineSessionId?.isNotBlank() == true) {
+            runCatching {
+                messageRepo.offlineSessionMessages(conversationUuid, convo.currentOfflineSessionId!!)
+                    .filter { it.roleRaw == "assistant" && it.messageKindRaw == com.situ.aichat.data.model.MessageKind.PLAIN_TEXT.raw }
+                    .takeLast(12)
+                    .map { it.content.trim().take(60) }
+                    .filter { it.isNotEmpty() }
+            }.getOrDefault(emptyList())
+        } else emptyList()
+        // 合并：regen 在前（被删旧输出是本轮最需防的），会话存量在后；前缀去重 + 总量上限 16。
+        val mergedRegenSteps = (regenSteps + sessionSteps)
+            .distinct()
+            .filterIndexed { i, _ -> i < 16 }
         // 时间感知三期：今天之前 3 天的日程事件 → 【你最近几天的日子】。起点用**日期算术**
         //（不是 todayStart − 3×86400000，夏令时 / 时区偏移下不安全）；复用上面同一个 now，不另起 Instant.now()。
         val recentDaysStartMillis = Instant.ofEpochMilli(todayStartMillis).atZone(ZoneId.systemDefault())
@@ -383,9 +402,10 @@ internal class AssistantTurnEngine(
                     it.isNotBlank()
             },
             segmentSink = segmentSink,
-            // [zCODE] P1·第2项 读取处1：剧情锚点 + 已完成事件清单（每回合装配前预取一次·常开注入）。
+            // [zCODE] P1·第2项 读取处1：剧情锚点 + 已完成事件清单（每回合装配前预取一次·常开注入）+ LB-1/LB-3-C 防复读要点（会话全生命周期合并源）。
             storyAnchor = storyAnchorSnapshot,
             completedEvents = completedStoryEvents,
+            regenSteps = mergedRegenSteps,
         )
         // 批 D 上下文日志：主装配顺带收一次结构化分段（聊天管线，1:1 iOS buildMessagesWithSegments）；
         // 后续 fallback/降级重装配不再收。每次流式尝试落一条日志（source=CHAT），用本表 + 末帧 usage。

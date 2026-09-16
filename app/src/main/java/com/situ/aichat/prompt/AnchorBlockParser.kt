@@ -31,6 +31,19 @@ object AnchorBlockParser {
     private val BLOCK_HEADER = Regex("""^【(?:场景状态|当前场景|场景)】\s*$""", RegexOption.IGNORE_CASE)
     private val BLOCK_HEADER_INLINE = Regex("""^【(?:场景状态|当前场景|场景)】\s*(.+)$""", RegexOption.IGNORE_CASE)
 
+    /**
+     * [zCODE] LB-3-B·内嵌形态锚点：`【锚点】` 出现在**行中任意位置**（破折号引导 `————【锚点】…`、
+     * 非独立块、混入叙事尾部）——实测此类从未入库，为常态缺口。取【锚点】标记后至行尾/｜ 的内容（剥尾标点），
+     * 按 ·/｜ 分隔归一（分隔符契约 ·/｜/： 与《锚点格式》规范 v1 同源·点3 锁金样）。
+     */
+    private val EMBEDDED_ANCHOR = Regex("""【锚点】\s*([^｜\n\r]+)""")
+
+    /** 痕迹超集（含畸形/未闭合形态）：任意锚点标记出现即计——解析全败时有痕迹可依（LB-3-B ③ 前提）。 */
+    private val TRACE_MARKS = Regex("""\[场景[：:]|【锚点】|【(?:场景状态|当前场景|场景)】""")
+
+    /** 锚点**痕迹**计数（LB-3-B ③：解析全败但有痕迹 → 调用侧记空+日志，不静默丢弃）。任何形态（含畸形/未闭合）的锚点标记出现次数。 */
+    fun anchorTraceCount(response: String): Int = TRACE_MARKS.findAll(response).count()
+
     /** 块内键值行（容忍全角冒号与「位置/地点/所在」同义）。 */
     private val KEY_LOCATION = Regex("""^(?:地点|位置|所在)[：:]\s*(.+)$""")
     private val KEY_EVENT = Regex("""^(?:事件|正在|动态|近况)[：:]\s*(.+)$""")
@@ -57,6 +70,22 @@ object AnchorBlockParser {
                 }
             }
             if (parsed is OutputSanitizer.BlockParseResult.Ok) out.add(parsed.value)
+        }
+        // ②b 内嵌形态（LB-3-B）：`————【锚点】甲板·白团旗舰｜贝克曼：在场` 混在叙事行里——取标记后至行尾/｜（剥尾标点）。
+        for (m in EMBEDDED_ANCHOR.findAll(response)) {
+            val parsedEmbedded = OutputSanitizer.parseBlockTolerantly(m.groupValues[1], "anchor-embedded") { raw ->
+                val body = raw.trim().trimEnd('。', '，', '！', '？', '；', '，', ' ', '，')
+                if (body.isEmpty()) null else {
+                    // 与规范 v1 咬合：`{个人位置}·{船团基线}｜{他人}：在场/不在场（位置）`——个人位置取首段，
+                    // ｜ 后的在场名单留给点3 的扩展字段；当前形态只取个人位置 + 次段事件。
+                    val head = body.substringBefore('｜')
+                    val parts = head.split('·', '•').map { it.trim() }.filter { it.isNotEmpty() }
+                    AnchorBlock(locationRaw = parts.firstOrNull().orEmpty(), eventName = parts.drop(1).joinToString("·"))
+                }
+            }
+            if (parsedEmbedded is OutputSanitizer.BlockParseResult.Ok && parsedEmbedded.value.locationRaw.isNotEmpty()) {
+                out.add(parsedEmbedded.value)
+            }
         }
         // ② 块标记（状态机：块头之后的非空行里找键值；连续两行非键值非空即视为块结束）
         val lines = response.lines()

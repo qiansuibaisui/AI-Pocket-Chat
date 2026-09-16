@@ -17,14 +17,20 @@ object AnchorInjectionBuilder {
         raw.replace(Regex("[\\r\\n\\t]+"), " ").trim().take(maxLen)
 
     /**
-     * 渲染【剧情位置】+【已执行事件】注入段。锚点 null 且清单空 → ""（整段不注入）。
+     * 渲染【剧情位置】+【已执行事件】+【防复读】注入段。锚点 null 且清单空 → ""（整段不注入）。
      * 措辞分级（读取处4 同款口径）：fresh =「刚刚更新/刚更新」；aging =「N 小时前的信息」；stale 不注入位置行
      * （按位置不明处理），只保留补齐提示（裁决2：仅 stale 时提）。
+     *
+     * [regenSteps]（LB-1·回合内重生成防复读）：重生成请求时传入**本回合已输出的步骤要点**（被删旧回复的段文本），
+     * 注入规则"已输出内容不得复读同一情节节拍，须换推进角度"——治"见面内重生成复读同序节拍
+     * （蜂蜜威士忌→外套披肩→萨奇留饭 ×3）"：见面未完结、ledger 无记录，【已执行事件】清单覆盖不到的窗口。
+     * 与已执行事件清单同段渲染；空清单省略。
      */
     fun buildModule(
         anchor: StoryAnchorSnapshotEntity?,
         completedEvents: List<StoryEventLedgerEntity>,
         nowMillis: Long,
+        regenSteps: List<String> = emptyList(),
     ): String {
         val anchorLines = buildList {
             if (anchor != null) {
@@ -44,7 +50,8 @@ object AnchorInjectionBuilder {
             .sortedByDescending { it.completedAt }
             .take(5) // 软上限：清单是「近期」不是流水账
             .map { "- ${sanitizeAnchorText(it.description.ifBlank { it.eventKey })}" }
-        if (anchorLines.isEmpty() && eventLines.isEmpty()) return ""
+        val stepLines = regenSteps.mapNotNull { s -> s.trim().takeIf { it.isNotEmpty() }?.let { "- ${sanitizeAnchorText(it)}" } }
+        if (anchorLines.isEmpty() && eventLines.isEmpty() && stepLines.isEmpty()) return ""
         return buildString {
             if (anchorLines.isNotEmpty()) {
                 appendLine("【剧情位置】（系统登记的真实状态，优先于一切推测）")
@@ -54,6 +61,11 @@ object AnchorInjectionBuilder {
             if (eventLines.isNotEmpty()) {
                 appendLine("【已执行事件】以下流程已执行完毕，不得重新执行、不得当成没发生过：")
                 eventLines.forEach { appendLine(it) }
+                appendLine()
+            }
+            if (stepLines.isNotEmpty()) {
+                appendLine("【防复读】以下是本回合已输出过的情节节拍，重写时不得复读同一节拍（原样或换皮同序都算复读），必须换一个推进角度：")
+                stepLines.forEach { appendLine(it) }
                 appendLine()
             }
             // [zCODE] B2·场景治理规则（用户裁定版）：场景节点允许自然推进，但每次变更必须用 [场景：…] 标注并说明
