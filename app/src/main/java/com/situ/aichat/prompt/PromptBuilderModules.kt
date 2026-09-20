@@ -91,6 +91,8 @@ fun buildSystemPromptWithSuffixes(
     worldInfoAfter: String = "",
     /** 卷三 D2：透传进 [PromptBuilder.BuildContext.recentCharacterLines]（空 = 无自述·旧行为）。 */
     recentCharacterLines: List<String> = emptyList(),
+    /** [zCODE] P1点3 追加项2：当前锚点（fresh/aging 时【此刻】日程当前行降级"计划参考"——双重来源归一）。 */
+    storyAnchor: com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity? = null,
 ): Pair<String, List<SuffixModuleEntry>> {
     val macros = PromptBuilder.promptMacros(character, userProfile, strings)
     val ctx = PromptBuilder.BuildContext(
@@ -132,6 +134,7 @@ fun buildSystemPromptWithSuffixes(
         now = now,
         strings = strings,
         recentCharacterLines = recentCharacterLines,
+        storyAnchor = storyAnchor, // [zCODE] 点3 追加项2
     )
 
     val modules = PromptModuleService.effectiveModules(

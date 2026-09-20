@@ -133,6 +133,9 @@ object PromptBuilder {
          *  从结构化行渲染·§3.6）：{{见面记忆}} 宏唯一来源；调用方预取后传入。默认 "" = 不注入（additive·向后兼容）。
          *  注入时经相框包装（[buildOfflineMeetingMemoryContent]·2026-07-11 前置改造·空→空）。 */
         val offlineMeetingMemoryText: String = "",
+        /** [zCODE] P1·点3 追加项2：当前锚点快照（【此刻】模块降级判定——fresh/aging 时日程当前行改"计划参考"，
+         *  双重来源归一：宏管线读日程、锚点段读登记，本降级消除两段各说各话）。null = 无锚点/超龄 → 旧行为零变化。 */
+        val storyAnchor: com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity? = null,
         /** W5 世界联动上下文块（提炼 + 世界记忆·[com.situ.aichat.world.link.WorldChatContextProvider] 装配后传入；
          *  null/空 = 不注入）：作为【角色记忆】模块第四层（§9 联动闭环·additive 零改既有段）。 */
         val worldContext: String? = null,
@@ -408,6 +411,7 @@ object PromptBuilder {
             worldInfoBefore = activeWorldInfo?.before?.takeIf { it.isNotBlank() }?.let(::resolveWorld) ?: "",
             worldInfoAfter = activeWorldInfo?.after?.takeIf { it.isNotBlank() }?.let(::resolveWorld) ?: "",
             recentCharacterLines = recentCharacterLines,
+            storyAnchor = storyAnchor, // [zCODE] 点3 追加项2：透传【此刻】降级判定
         )
         if (systemPrompt.isNotEmpty()) {
             // [zCODE] P1·第2项 读取处1 + LB-1：剧情锚点 + 已执行事件 + 重生成防复读——常开直追加（字段过

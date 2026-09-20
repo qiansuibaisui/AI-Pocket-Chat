@@ -69,14 +69,16 @@ class AnchorBlockParserTest {
     // ── LB-3-B：内嵌形态 + 痕迹计数（解析失败不静默丢弃的前提） ──
 
     @Test fun embedded_anchor_dash_led_and_tail_forms() {
-        // 破折号引导（正则不匹配破折号本体：1~4 连字与任意装饰前缀天然容错）+ ｜在场名单（规范 v1 分隔符）
+        // 破折号引导（正则不匹配破折号本体：1~4 连字与任意装饰前缀天然容错）+ ｜在场名单（规范 v1 分隔符）。
+        // [zCODE] LB-4 规格后：位置段 = 原始整值（· 不切分·eventName 不再从 · 拆出——完整契约见 AnchorContractGoldenTest）
         val b = AnchorBlockParser.parseLastBlock("他把杯子放下。————【锚点】甲板·白团海上旗舰｜贝克曼：不在场（酒馆）")
-        assertEquals("甲板", b!!.locationRaw)
-        assertEquals("白团海上旗舰", b.eventName)
+        assertEquals("甲板·白团海上旗舰", b!!.locationRaw)
+        assertEquals("", b.eventName)
+        assertEquals(1, b.presentList.size)
+        assertEquals(false, b.presentList[0].present)
         // LB-3-B 实测同款夹具变体：两字符破折号 ——（与上一条四连字符共同锁定"前缀无关"）
         val twoDash = AnchorBlockParser.parseLastBlock("——【锚点】船舱·夜航")
-        assertEquals("船舱", twoDash!!.locationRaw)
-        assertEquals("夜航", twoDash.eventName)
+        assertEquals("船舱·夜航", twoDash!!.locationRaw)
         // 混入叙事尾部（句末标点被剥）
         val tail = AnchorBlockParser.parseLastBlock("两人沿着堤岸走了一段。【锚点】街道。")
         assertEquals("街道", tail!!.locationRaw)

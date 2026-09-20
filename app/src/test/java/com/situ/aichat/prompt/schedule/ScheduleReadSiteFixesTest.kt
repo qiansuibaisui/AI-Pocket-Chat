@@ -101,4 +101,20 @@ class ScheduleReadSiteFixesTest {
         val (_, stale) = service.buildPrompt(req(anchorSnapshot("sailing", "甲板"), fresh = false))
         assertTrue(!stale.contains("【硬约束】"))
     }
+
+    // ── [zCODE] P1·点3 追加项2：【此刻】日程当前行锚点降级 双态 ──
+
+    @Test fun moment_downgrade_prefix_dual_state() {
+        val now = 1_000_000L
+        // fresh（1h 前）→ 降级前缀（计划参考·实际位置以【剧情位置】为准·旧日程不伪装实时）
+        val fresh = com.situ.aichat.prompt.momentDowngradePrefix(now - 3600_000, now)
+        assertTrue(fresh.contains("计划参考"))
+        assertTrue(fresh.contains("【剧情位置】"))
+        // aging（12h 前）→ 同样降级
+        assertTrue(com.situ.aichat.prompt.momentDowngradePrefix(now - 12L * 3600_000, now).contains("计划参考"))
+        // stale（3 天前）→ 空前缀 = 旧行为零变化
+        assertEquals("", com.situ.aichat.prompt.momentDowngradePrefix(now - 72L * 3600_000, now))
+        // 无锚点（null）→ 空前缀
+        assertEquals("", com.situ.aichat.prompt.momentDowngradePrefix(null, now))
+    }
 }

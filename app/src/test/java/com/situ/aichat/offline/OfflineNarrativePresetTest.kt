@@ -69,6 +69,10 @@ class OfflineNarrativePresetTest {
         assertTrue(p.contains("${OfflineNarrativePreset.PLAIN.rule8}9. 每次回复 4-6 个内容块"))
         // extraStyleRules follows rule 16 and numbers as 17.
         assertTrue(p.contains("17. 写作风格：用最日常的语气写"))
+        // [zCODE] P1·点3 追加项3：标签独立成行条款（金样锁定——[场景：] 简式独立行·治 LB-3-B 内嵌缺口）。
+        assertTrue(p.contains("必须独立成行"))
+        assertTrue(p.contains("1b. [场景：…]、[时间：…]、[过渡] 等单行标签必须独立成行"))
+        assertTrue(p.contains("[场景：地点 · 时间描述] — 新场景开始时使用（单行标签，无需闭合；**必须独立成行，不与正文文字同行**）"))
     }
 
     // ── 2026-08-31 人设优先、机器退位（微图纸 §4-A/§6）──

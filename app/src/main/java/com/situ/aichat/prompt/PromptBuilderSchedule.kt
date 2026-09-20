@@ -13,6 +13,7 @@ import com.situ.aichat.prompt.growth.ScheduleSignal
 import com.situ.aichat.prompt.schedule.buildRecentDaysSection
 import com.situ.aichat.prompt.schedule.schedulePastLine
 import java.time.Instant
+import com.situ.aichat.prompt.AnchorVocabulary
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -168,8 +169,8 @@ private fun buildCurrentMomentBlock(data: ScheduleData, ctx: PromptBuilder.Build
 
     val current = data.sortedEvents.firstOrNull { it.startTime <= now && now <= it.endTime }
     if (current != null) {
-        // 情况 1：有进行中事件
-        var headline = "你正在${current.activity}"
+        // 情况 1：有进行中事件（[zCODE] 点3 追加项2：降级前缀判定抽纯函数 momentDowngradePrefix——双态单测直测）
+        var headline = "${momentDowngradePrefix(ctx.storyAnchor?.effectiveAt, now)}你正在${current.activity}"
         if (current.location.isNotEmpty()) headline += "（地点：${current.location}）"
         val remainingMin = ((current.endTime - now) / 60_000L).coerceAtLeast(0L)
         if (remainingMin > 0) headline += "，预计还持续约 $remainingMin 分钟"
@@ -342,3 +343,14 @@ private val DEFAULT_INJECTION_INSTRUCTION = """
     反例：用户在问你代码怎么写，你开头非要加一句"我现在在咖啡馆"——这叫硬塞，不是真实感。
     ${MOMENT_PRIVATE_NOTE}
 """.trimIndent()
+
+/**
+ * [zCODE] P1·点3 追加项2（双重来源归一·评审附加条件2 同款分级措辞）：【此刻】日程当前行的降级前缀——
+ * 锚点 fresh/aging（非 stale）时返回"（计划参考·实际位置以【剧情位置】为准）按日程"，旧日程不伪装实时状态；
+ * 超龄/无锚点（null）返回空串 = 旧行为零变化。顶层纯函数便于双态单测。
+ */
+internal fun momentDowngradePrefix(anchorEffectiveAt: Long?, nowMillis: Long): String {
+    if (anchorEffectiveAt == null) return ""
+    val fresh = AnchorVocabulary.freshnessOf(anchorEffectiveAt, nowMillis) != AnchorVocabulary.FreshnessLevel.STALE
+    return if (fresh) "（计划参考·实际位置以【剧情位置】为准）按日程" else ""
+}

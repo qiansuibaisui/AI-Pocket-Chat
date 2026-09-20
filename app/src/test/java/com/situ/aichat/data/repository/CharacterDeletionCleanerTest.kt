@@ -41,6 +41,7 @@ class CharacterDeletionCleanerTest {
             meetingAppointmentStore = mockk(relaxed = true),
             settingsRepository = settingsRepository,
             storyDao = storyDao,
+            storyStateRepository = mockk(relaxed = true), // [zCODE] 点3 追加项A
         )
         val character = mockk<CharacterEntity>(relaxed = true)
         every { character.uuid } returns "char-1"

@@ -159,8 +159,10 @@ import com.situ.aichat.data.local.entity.WorldUserResidentEntity
         // + 已完成事件账本（唯一索引 (characterUuid, eventKey)）。无 FK·手动级联清；写入口唯一 = StoryStateRepository。
         StoryAnchorSnapshotEntity::class,
         StoryEventLedgerEntity::class,
+        // [zCODE] P1·第3项 世界锚点层：船团成员映射（联合唯一 (fleetKey, characterUuid)·world_sync 广播扇出取材）。
+        com.situ.aichat.data.local.entity.StoryFleetMemberEntity::class,
     ],
-    version = 50,
+    version = 51,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

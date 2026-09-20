@@ -24,7 +24,8 @@ class StoryStateRepositoryTest {
 
     private val dao = mockk<StoryStateDao>(relaxed = true)
     private val scheduleDao = mockk<com.situ.aichat.data.local.dao.ScheduleDao>(relaxed = true)
-    private val repo = StoryStateRepository(dao, scheduleDao)
+    private val messageRepo = mockk<MessageRepository>(relaxed = true)
+    private val repo = StoryStateRepository(dao, scheduleDao, messageRepo)
 
     private fun previous(effectiveAt: Long, capturedAt: Long) = StoryAnchorSnapshotEntity(
         characterUuid = "char-1", conversationUuid = "conv-1",
@@ -160,5 +161,70 @@ class StoryStateRepositoryTest {
         coEvery { dao.insertLedger(any()) } returns -1L
         repo.recordCompletedEvent(listOf("c1"), emptyMap(), "meeting-s1", "见面完成", source = StoryEventSource.OFFLINE_MEETING)
         coVerify(exactly = 0) { scheduleDao.insertEvents(any()) }
+    }
+
+    // ── [zCODE] P1·第3项：船团广播（防环/幂等/个体冲突不覆盖） ──
+
+    private fun fleetMember(fleet: String, char: String, convo: String = "") =
+        com.situ.aichat.data.local.entity.StoryFleetMemberEntity(fleetKey = fleet, characterUuid = char, conversationUuid = convo)
+
+    @Test fun broadcast_fans_out_with_idempotent_key() = runTest {
+        val now = 1_000L
+        val trigger = previous(effectiveAt = now - 60_000, capturedAt = now - 60_000)
+            .copy(relatedMessageUUID = "msg-1", fleetKey = "whitebeard", sourceRaw = AnchorSource.DIALOG_BLOCK.raw)
+        coEvery { dao.membersOfFleet("whitebeard") } returns listOf(fleetMember("whitebeard", "c1", "conv-b"), fleetMember("whitebeard", "c2", "conv-c"))
+        coEvery { dao.snapshotExists(any(), any()) } returns false
+        coEvery { dao.insertSnapshot(any()) } returns 1L
+        coEvery { dao.latestSnapshotFor(any()) } returns null // 成员无个人锚点 → 冲突守卫不触发
+
+        val fanned = repo.broadcastToFleetMates(trigger, nowMillis = now)
+
+        assertEquals(2, fanned)
+        val rows = mutableListOf<StoryAnchorSnapshotEntity>()
+        coVerify(atLeast = 2) { dao.insertSnapshot(capture(rows)) }
+        // 幂等键 "{触发消息uuid}:{目标卡uuid}" + world_sync 源 + 基线时点原样（时效保真）
+        assertTrue(rows.all { it.sourceRaw == AnchorSource.WORLD_SYNC.raw })
+        assertTrue(rows.any { it.relatedMessageUUID == "msg-1:c1" && it.characterUuid == "c1" })
+        assertTrue(rows.any { it.relatedMessageUUID == "msg-1:c2" && it.characterUuid == "c2" })
+        assertTrue(rows.all { it.effectiveAt == trigger.effectiveAt })
+    }
+
+    @Test fun broadcast_world_sync_source_never_rebroadcasts() = runTest {
+        // 防环核心：world_sync 触发行 → 直接 0 扇出（白名单外短路，A→B 后 B 不回写 A）
+        val trigger = previous(1L, 1L).copy(sourceRaw = AnchorSource.WORLD_SYNC.raw, fleetKey = "wb", relatedMessageUUID = "m")
+        assertEquals(0, repo.broadcastToFleetMates(trigger))
+        coVerify(exactly = 0) { dao.insertSnapshot(any()) }
+    }
+
+    @Test fun broadcast_idempotent_key_hit_skips_member() = runTest {
+        val trigger = previous(1L, 1L).copy(sourceRaw = AnchorSource.DIALOG_BLOCK.raw, fleetKey = "wb", relatedMessageUUID = "m")
+        coEvery { dao.membersOfFleet("wb") } returns listOf(fleetMember("wb", "c2"))
+        coEvery { dao.snapshotExists("m:c2", AnchorSource.WORLD_SYNC.raw) } returns true // 重复广播
+        assertEquals(0, repo.broadcastToFleetMates(trigger))
+        coVerify(exactly = 0) { dao.insertSnapshot(any()) }
+    }
+
+    @Test fun broadcast_conflicting_personal_anchor_not_overwritten() = runTest {
+        // 个体冲突不覆盖：成员有 AGING 内个人锚点且 MotionState 不同 → 跳过写行（world_sync_conflict 计数）
+        val now = 1_000_000L
+        val trigger = previous(1L, 1L).copy(sourceRaw = AnchorSource.DIALOG_BLOCK.raw, fleetKey = "wb", relatedMessageUUID = "m", motionStateRaw = "sailing")
+        coEvery { dao.membersOfFleet("wb") } returns listOf(fleetMember("wb", "c2", "conv-c"))
+        coEvery { dao.snapshotExists(any(), any()) } returns false
+        coEvery { dao.latestSnapshotFor("c2") } returns previous(now - 3600_000, now - 3600_000).copy(motionStateRaw = "ashore") // 个人在岸
+        assertEquals(0, repo.broadcastToFleetMates(trigger, nowMillis = now))
+        coVerify(exactly = 0) { dao.insertSnapshot(any()) }
+    }
+
+    @Test fun fleet_mates_and_effective_anchor_default_unity() = runTest {
+        coEvery { dao.fleetKeyOfCharacter("c1") } returns "wb"
+        coEvery { dao.membersOfFleet("wb") } returns listOf(fleetMember("wb", "c1"), fleetMember("wb", "c2"))
+        assertEquals(listOf("c2"), repo.fleetMatesFor("c1"))
+        // 未配团 → 空（fail-open）
+        coEvery { dao.fleetKeyOfCharacter("c9") } returns null
+        assertTrue(repo.fleetMatesFor("c9").isEmpty())
+        // 默认粒度（BASELINE_PLUS_OFFSET）= 个人最新行
+        val personal = previous(5L, 5L)
+        coEvery { dao.latestSnapshotFor("c1") } returns personal
+        assertEquals(personal.uuid, repo.effectiveAnchorFor("c1")?.uuid)
     }
 }

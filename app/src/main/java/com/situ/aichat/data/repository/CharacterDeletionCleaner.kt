@@ -43,6 +43,7 @@ class CharacterDeletionCleaner @Inject constructor(
     private val conversationMediaCleaner: ConversationMediaCleaner,
     private val currencyDao: CurrencyDao,
     private val giftDao: GiftDao,
+    private val storyStateRepository: StoryStateRepository, // [zCODE] P1·第3项 追加项A：锚点三表级联
     private val notificationTemplateDao: NotificationTemplateDao,
     private val notificationDeliveryDao: NotificationDeliveryDao,
     private val notificationWindowStatsDao: NotificationWindowStatsDao,
@@ -102,6 +103,10 @@ class CharacterDeletionCleaner @Inject constructor(
         // ④d Phase 10 未来约定见面：撤该角色全部约定的到点通知 + 删约定行（无 FK 不级联·key=meetup_<uuid> 不含
         //     characterId、④ 三路够不着 → 约定模块自有清理：先枚举 uuid 撤通知、再删行，防孤儿到点错喊赴约）。
         meetingAppointmentStore.deleteForCharacter(uuid)
+
+        // [zCODE] P1·第3项 追加项A：锚点中央登记三表级联（快照/账本孤儿行 + 船团成员关系——不删则广播扇出
+        // 会持续命中幽灵卡、名片锚点行读到已删卡残留）。
+        storyStateRepository.deleteAllForCharacter(uuid)
 
 
         // ③ 通知台账（模板/投递记录/窗口统计）= iOS cleanupNotificationData 的 DB 部分。必须在 ④ 之后（见上）。

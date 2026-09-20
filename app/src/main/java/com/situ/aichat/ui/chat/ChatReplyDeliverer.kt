@@ -306,6 +306,12 @@ internal class ChatReplyDeliverer(
                     ),
                 )
             }
+            // [zCODE] P1·第3项：船团广播（world_sync 扇出+防环+个体冲突不覆盖——见 StoryStateRepository.broadcastToFleetMates）。
+            // 仅**有新锚点块**的回合广播（carryover 无新信息不扇出）；失败仅日志不影响投递。
+            if (saved != null && effectiveAnchor != null) {
+                runCatching { storyStateRepository.broadcastToFleetMates(saved) }
+                    .onFailure { Log.w(TAG, "船团广播失败（不影响投递）: ${it.message}") }
+            }
         }.onFailure { Log.w(TAG, "锚点落库失败（不影响投递）: ${it.message}") }
     }
 

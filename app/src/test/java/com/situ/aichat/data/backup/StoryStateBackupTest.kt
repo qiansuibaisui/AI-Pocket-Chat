@@ -40,7 +40,7 @@ class StoryStateBackupTest {
         // 这里直接锁 restoreStoryState(null, null) 的行为契约。
         val dao = io.mockk.mockk<com.situ.aichat.data.local.dao.StoryStateDao>(relaxed = true)
         kotlinx.coroutines.runBlocking {
-            restoreStoryState(dao, anchors = null, events = null, existingCharacterUuids = setOf("c1"))
+            restoreStoryState(dao, anchors = null, events = null, fleetMembers = null, existingCharacterUuids = setOf("c1"))
         }
         io.mockk.coVerify(exactly = 0) { dao.insertOrReplaceSnapshots(any()) }
         io.mockk.coVerify(exactly = 0) { dao.insertOrReplaceLedger(any()) }
@@ -55,6 +55,7 @@ class StoryStateBackupTest {
                 dao,
                 anchors = listOf(anchor.toExport()),
                 events = listOf(event.toExport()),
+                fleetMembers = null,
                 existingCharacterUuids = setOf("alive"), // ghost 角色已删 → 行跳过
             )
         }

@@ -67,16 +67,40 @@ internal fun StoryEventBackupData.toEntity() = StoryEventLedgerEntity(
 )
 
 /** 收集（Exporter·老备份兼容：全量升序，空 → null 段省略）。 */
-internal suspend fun collectStoryState(dao: StoryStateDao): Pair<List<StoryAnchorBackupData>?, List<StoryEventBackupData>?> =
-    dao.allSnapshots().map { it.toExport() }.ifEmpty { null } to dao.allLedger().map { it.toExport() }.ifEmpty { null }
+internal suspend fun collectStoryState(dao: StoryStateDao): Triple<List<StoryAnchorBackupData>?, List<StoryEventBackupData>?, List<FleetMemberBackupData>?> =
+    Triple(
+        dao.allSnapshots().map { it.toExport() }.ifEmpty { null },
+        dao.allLedger().map { it.toExport() }.ifEmpty { null },
+        dao.allFleetMembers().map { it.toExport() }.ifEmpty { null },
+    )
 
 /** 恢复（Importer 事务内·幽灵 characterUuid 行跳过·uuid REPLACE 幂等·老备份段缺失 = 留空从零建档）。 */
 internal suspend fun restoreStoryState(
     dao: StoryStateDao,
     anchors: List<StoryAnchorBackupData>?,
     events: List<StoryEventBackupData>?,
+    fleetMembers: List<FleetMemberBackupData>?,
     existingCharacterUuids: Set<String>,
 ) {
     anchors?.filter { it.characterUuid in existingCharacterUuids }?.takeIf { it.isNotEmpty() }?.let { dao.insertOrReplaceSnapshots(it.map { d -> d.toEntity() }) }
     events?.filter { it.characterUuid in existingCharacterUuids }?.takeIf { it.isNotEmpty() }?.let { dao.insertOrReplaceLedger(it.map { d -> d.toEntity() }) }
+    fleetMembers?.filter { it.characterUuid in existingCharacterUuids }?.takeIf { it.isNotEmpty() }?.let { dao.insertOrReplaceFleetMembers(it.map { d -> d.toEntity() }) }
 }
+
+/** [zCODE] P1·第3项：船团成员备份 DTO（第 21 段·本机配置随整库迁移；老备份缺失 = 留空）。 */
+@Serializable
+data class FleetMemberBackupData(
+    val uuid: String,
+    val fleetKey: String,
+    val characterUuid: String,
+    val conversationUuid: String = "",
+    val joinedAt: Long = 0L,
+)
+
+internal fun com.situ.aichat.data.local.entity.StoryFleetMemberEntity.toExport() = FleetMemberBackupData(
+    uuid = uuid, fleetKey = fleetKey, characterUuid = characterUuid, conversationUuid = conversationUuid, joinedAt = joinedAt,
+)
+
+internal fun FleetMemberBackupData.toEntity() = com.situ.aichat.data.local.entity.StoryFleetMemberEntity(
+    uuid = uuid, fleetKey = fleetKey, characterUuid = characterUuid, conversationUuid = conversationUuid, joinedAt = joinedAt,
+)

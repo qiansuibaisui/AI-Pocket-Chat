@@ -742,6 +742,26 @@ val MIGRATION_49_50 = object : Migration(49, 50) {
     }
 }
 
+/**
+ * [zCODE] P1·第3项 世界锚点层 v50→v51：
+ *  ① 新建 `story_fleet_members`（船团成员映射·索引 characterUuid + 唯一索引 (fleetKey, characterUuid)·无 FK·
+ *  手动级联清·conversationUuid 供 world_sync ⚓ 通知投递）；
+ *  ② `story_anchor_snapshots` 加 `fleetKey`（快照时船团键·空=无团）+ `presentListJson`（在场名单 JSON·
+ *  仅规范式提取·历史行空串不回填）。DDL 逐字取自 Room 生成 51.json；纯增量·旧表零丢失。
+ */
+val MIGRATION_50_51 = object : Migration(50, 51) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `story_fleet_members` (`uuid` TEXT NOT NULL, `fleetKey` TEXT NOT NULL, " +
+                "`characterUuid` TEXT NOT NULL, `conversationUuid` TEXT NOT NULL, `joinedAt` INTEGER NOT NULL, PRIMARY KEY(`uuid`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_story_fleet_members_characterUuid` ON `story_fleet_members` (`characterUuid`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_story_fleet_members_fleetKey_characterUuid` ON `story_fleet_members` (`fleetKey`, `characterUuid`)")
+        db.execSQL("ALTER TABLE `story_anchor_snapshots` ADD COLUMN `fleetKey` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `story_anchor_snapshots` ADD COLUMN `presentListJson` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 /** 全部迁移（按序），注入 Room.databaseBuilder().addMigrations(*ALL_MIGRATIONS)。 */
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
@@ -793,4 +813,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_47_48,
     MIGRATION_48_49,
     MIGRATION_49_50,
+    MIGRATION_50_51,
 )

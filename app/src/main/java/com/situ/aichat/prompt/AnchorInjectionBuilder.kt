@@ -36,11 +36,18 @@ object AnchorInjectionBuilder {
             if (anchor != null) {
                 when (AnchorVocabulary.freshnessOf(anchor.effectiveAt, nowMillis)) {
                     AnchorVocabulary.FreshnessLevel.FRESH -> {
-                        add("当前：${sanitizeAnchorText(anchor.eventName)}（${sanitizeAnchorText(anchor.locationRaw)}）·刚刚更新")
+                        // [zCODE] LB-4：locationRaw 为原始整值（含 · 不切分）；eventName 空（规范单行形态）时直接整值显示
+                        add(
+                            if (anchor.eventName.isBlank()) "当前：${sanitizeAnchorText(anchor.locationRaw)}·刚刚更新"
+                            else "当前：${sanitizeAnchorText(anchor.eventName)}（${sanitizeAnchorText(anchor.locationRaw)}）·刚刚更新",
+                        )
                     }
                     AnchorVocabulary.FreshnessLevel.AGING -> {
                         val hours = ((nowMillis - anchor.effectiveAt) / 3_600_000L).coerceAtLeast(1)
-                        add("当前：${sanitizeAnchorText(anchor.eventName)}（${sanitizeAnchorText(anchor.locationRaw)}）·${hours}小时前的信息，按剧情判断是否仍成立")
+                        add(
+                            if (anchor.eventName.isBlank()) "当前：${sanitizeAnchorText(anchor.locationRaw)}·${hours}小时前的信息，按剧情判断是否仍成立"
+                            else "当前：${sanitizeAnchorText(anchor.eventName)}（${sanitizeAnchorText(anchor.locationRaw)}）·${hours}小时前的信息，按剧情判断是否仍成立",
+                        )
                     }
                     AnchorVocabulary.FreshnessLevel.STALE -> Unit // 超龄：位置按不明处理，不注入旧位置行
                 }

@@ -29,6 +29,7 @@ import kotlin.math.max
 class StoryStateRepository @Inject constructor(
     private val dao: StoryStateDao,
     private val scheduleDao: com.situ.aichat.data.local.dao.ScheduleDao, // [zCODE] 读取处5：storyLedger 星标通道
+    private val messageRepo: com.situ.aichat.data.repository.MessageRepository, // [zCODE] 点3：world_sync ⚓ 通知投递
 ) {
 
     /**
@@ -73,6 +74,8 @@ class StoryStateRepository @Inject constructor(
                     effectiveAt = nowMillis, // 模型刚输出的位置 = 本轮成立
                     capturedAt = nowMillis,
                     relatedMessageUUID = turnEndMessageUuid,
+                    fleetKey = dao.fleetKeyOfCharacter(characterUuid).orEmpty(), // [zCODE] 点3：快照时船团键（无团=空）
+                    presentListJson = encodePresentList(anchor.presentList), // [zCODE] 点3：在场名单（仅规范式提取）
                 ),
             )
         }
@@ -218,6 +221,148 @@ class StoryStateRepository @Inject constructor(
     }
 
     // ── 读 API（评审点2 五处接入的数据源；本阶段先备好） ──
+
+    // ── [zCODE] P1·第3项 世界锚点层：船团广播（防环）+ 统一粒度 ──
+
+    /** 广播源白名单（防环核心）：world_sync 行落库**不再触发**再广播——A→B 后 B 不回写 A，单向扇出无回声环。 */
+    private val BROADCAST_SOURCES = setOf(AnchorSource.DIALOG_BLOCK, AnchorSource.MANUAL, AnchorSource.DIRECTOR)
+
+    /**
+     * 点3·船团广播：`trigger` 为刚落库的锚点行（调用方 = [recordTurnAnchor] 收尾/Deliverer）。同团其余成员各写一行
+     * `source=world_sync`（内容 = 触发行的**基线**：locationRaw/motionState 原样——广播行即纯基线，无个体前缀）；
+     * 幂等键 `"{触发消息uuid}:{目标卡uuid}"`（唯一索引双保险，重复广播零行）。
+     *
+     * 个体冲突不覆盖：目标卡有 AGING 内个人锚点且 MotionState 与基线不同 → **跳过写行**仅记 world_sync_conflict
+     * 日志计数（个体偏移优先，防"白团靠岸≠佩罗娜靠岸"被基线抹平）；⚓ 通知复用 B1 通道（成员表 conversationUuid
+     * 空 = 仅写行不通知）。返回实际扇出的行数（观测用）。
+     */
+    suspend fun broadcastToFleetMates(
+        trigger: StoryAnchorSnapshotEntity,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Int = withContext(Dispatchers.IO) {
+        val source = AnchorSource.fromRaw(trigger.sourceRaw)
+        if (source !in BROADCAST_SOURCES) return@withContext 0 // 防环：world_sync 不再广播
+        val fleetKey = trigger.fleetKey.ifBlank { dao.fleetKeyOfCharacter(trigger.characterUuid) ?: return@withContext 0 }
+        val mates = dao.membersOfFleet(fleetKey).filter { it.characterUuid != trigger.characterUuid }
+        var fanned = 0
+        for (mate in mates) {
+            val idemKey = "${trigger.relatedMessageUUID}:${mate.characterUuid}"
+            if (dao.snapshotExists(idemKey, AnchorSource.WORLD_SYNC.raw)) continue
+            // 个体冲突守卫：目标卡 fresh(AGING) 个人锚点且状态不同 → 不覆盖，仅计数
+            val own = dao.latestSnapshotFor(mate.characterUuid)
+            val ownEffective = own?.takeIf {
+                AnchorVocabulary.freshnessOf(it.effectiveAt, nowMillis) != AnchorVocabulary.FreshnessLevel.STALE
+            }
+            if (ownEffective != null && AnchorVocabulary.MotionState.fromRaw(ownEffective.motionStateRaw) !=
+                AnchorVocabulary.MotionState.fromRaw(trigger.motionStateRaw)
+            ) {
+                Log.w(TAG, "world_sync_conflict（个体锚点优先不覆盖）mate=${mate.characterUuid.take(8)} fleet=$fleetKey")
+                continue
+            }
+            val rowId = dao.insertSnapshot(
+                trigger.copy(
+                    uuid = java.util.UUID.randomUUID().toString(),
+                    characterUuid = mate.characterUuid,
+                    conversationUuid = mate.conversationUuid,
+                    eventName = trigger.eventName,
+                    fleetKey = fleetKey,
+                    presentListJson = "", // 广播行不带触发卡的在场名单
+                    sourceRaw = AnchorSource.WORLD_SYNC.raw,
+                    effectiveAt = trigger.effectiveAt, // 基线成立时点原样（时效保真同口径）
+                    capturedAt = nowMillis,
+                    relatedMessageUUID = idemKey,
+                ),
+            )
+            if (rowId != -1L) {
+                fanned++
+                // ⚓ 通知（复用 B1 通道）：成员有登记会话且节点确实变更 → 插轻量系统条
+                if (mate.conversationUuid.isNotBlank() && own != null &&
+                    AnchorVocabulary.anchorChanged(own, trigger)
+                ) {
+                    runCatching {
+                        messageRepo.upsert(
+                            com.situ.aichat.data.local.entity.MessageEntity(
+                                messageUUID = java.util.UUID.randomUUID().toString(),
+                                conversationUuid = mate.conversationUuid,
+                                roleRaw = "system",
+                                content = com.situ.aichat.data.model.SystemEventJson.encode(
+                                    com.situ.aichat.data.model.makeSceneUpdateEventData(trigger.eventName, trigger.locationRaw, nowMillis),
+                                ),
+                                timestamp = nowMillis,
+                                messageKindRaw = com.situ.aichat.data.model.MessageKind.SYSTEM_EVENT_CARD.raw,
+                            ),
+                        )
+                    }.onFailure { Log.w(TAG, "world_sync ⚓ 通知失败（不影响广播）: ${it.message}") }
+                }
+            }
+        }
+        fanned
+    }
+
+    /** 统一粒度模式（裁决5）：默认船团基线+个体偏移；ABSOLUTE_UNITY = 团基线绝对统一（world_sync 行即纯基线）。 */
+    enum class UnityMode { BASELINE_PLUS_OFFSET, ABSOLUTE_UNITY }
+
+    /**
+     * 点3·统一粒度读口：`effectiveLocation = fleetBaseline ∪ personalOffset`。
+     * - BASELINE_PLUS_OFFSET（默认）：返回该卡最新行（个人/dialog/world_sync 均可）——个人行天然含偏移；
+     * - ABSOLUTE_UNITY：返回该团最近一次 world_sync/manual 基线行（无个人前缀·无团返回 null fail-open）。
+     */
+    suspend fun effectiveAnchorFor(
+        characterUuid: String,
+        unity: UnityMode = UnityMode.BASELINE_PLUS_OFFSET,
+    ): StoryAnchorSnapshotEntity? = withContext(Dispatchers.IO) {
+        when (unity) {
+            UnityMode.BASELINE_PLUS_OFFSET -> dao.latestSnapshotFor(characterUuid)
+            UnityMode.ABSOLUTE_UNITY -> {
+                val fleet = dao.fleetKeyOfCharacter(characterUuid) ?: return@withContext null
+                latestBaselineOfFleet(fleet)
+            }
+        }
+    }
+
+    /** 团内最近一次基线行（world_sync 优先，manual/director 兜底——dialog_block 是个体行不算团基线）。 */
+    private suspend fun latestBaselineOfFleet(fleetKey: String): StoryAnchorSnapshotEntity? {
+        val mates = dao.membersOfFleet(fleetKey)
+        var best: StoryAnchorSnapshotEntity? = null
+        for (mate in mates) {
+            val latest = dao.latestSnapshotFor(mate.characterUuid) ?: continue
+            val src = AnchorSource.fromRaw(latest.sourceRaw)
+            if (src != AnchorSource.WORLD_SYNC && src != AnchorSource.MANUAL && src != AnchorSource.DIRECTOR) continue
+            if (best == null || latest.capturedAt > best!!.capturedAt) best = latest
+        }
+        return best
+    }
+
+    /** [zCODE] P2 预留：同团成员 uuid（大事件旁路选卡/接地选角用；无团=空）。 */
+    suspend fun fleetMatesFor(characterUuid: String): List<String> = withContext(Dispatchers.IO) {
+        val fleet = dao.fleetKeyOfCharacter(characterUuid) ?: return@withContext emptyList()
+        dao.membersOfFleet(fleet).map { it.characterUuid }.filter { it != characterUuid }
+    }
+
+    /** [zCODE] P4 预留：director 广播语义 = applyDirectorEvent 落行后调 [broadcastToFleetMates]（源=director 在白名单）。 */
+
+    /** [zCODE] 追加项A：角色删除级联清理（CharacterDeletionCleaner 调）。 */
+    suspend fun deleteAllForCharacter(characterUuid: String) = withContext(Dispatchers.IO) {
+        dao.deleteAnchorsForCharacter(characterUuid)
+        dao.deleteLedgerForCharacter(characterUuid)
+        dao.deleteFleetMembershipForCharacter(characterUuid)
+    }
+
+    /** 在场名单 JSON 编码（kotlinx；空列表 = 空串——历史行空串不回填同口径）。 */
+    private fun encodePresentList(entries: List<AnchorBlockParser.PresentEntry>): String {
+        if (entries.isEmpty()) return ""
+        return runCatching {
+            val json = kotlinx.serialization.json.Json { encodeDefaults = false }
+            json.encodeToString(
+                kotlinx.serialization.builtins.ListSerializer(PresentEntryDto.serializer()),
+                entries.map { PresentEntryDto(it.name, it.present, it.location) },
+            )
+        }.getOrDefault("")
+    }
+
+    @kotlinx.serialization.Serializable
+    private data class PresentEntryDto(val name: String, val present: Boolean, val location: String = "")
+
 
     /** 当前锚点（最新行；manual 优先：同 capturedAt 冲突时 manual 行后写覆盖，读取取最新即自然生效）。 */
     suspend fun currentAnchorFor(characterUuid: String): StoryAnchorSnapshotEntity? =

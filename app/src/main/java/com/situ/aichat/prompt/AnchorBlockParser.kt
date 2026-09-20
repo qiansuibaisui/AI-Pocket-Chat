@@ -19,10 +19,20 @@ object AnchorBlockParser {
 
     /** 解析出的锚点块（原始字段，归一在 Repository 侧做）。 */
     data class AnchorBlock(
+        /**
+         * 位置原始整值（LB-4 规格：= "地点："与下一个"｜"之间的**原始子串**——值内含 ·（如船名
+         * "雷德·佛斯号"）时绝不被切分；· 仅在 locationKey 层用于船团基线前缀比较，禁止参与字段切分与显示重组，
+         * 显示端按原始整值渲染）。
+         */
         val locationRaw: String,
         val eventName: String = "",
         val timeText: String? = null,
+        /** 在场名单（仅规范式 `｜{名}：在场/不在场（{位置}）` 段提取；其余形态空——系统不做会话参与人推断）。 */
+        val presentList: List<PresentEntry> = emptyList(),
     )
+
+    /** 在场名单条目（规范 v1 的 ｜ 段）。 */
+    data class PresentEntry(val name: String, val present: Boolean, val location: String = "")
 
     /** 行内 `[场景：a·b]` / `[场景：a·b·c]`——段间用 · 或 • 或 | 分隔，首段=地点，末段若像时间则记 timeText。 */
     private val INLINE_TAG = Regex("""\[场景[：:]\s*([^\]]+)]""")
@@ -32,11 +42,17 @@ object AnchorBlockParser {
     private val BLOCK_HEADER_INLINE = Regex("""^【(?:场景状态|当前场景|场景)】\s*(.+)$""", RegexOption.IGNORE_CASE)
 
     /**
-     * [zCODE] LB-3-B·内嵌形态锚点：`【锚点】` 出现在**行中任意位置**（破折号引导 `————【锚点】…`、
-     * 非独立块、混入叙事尾部）——实测此类从未入库，为常态缺口。取【锚点】标记后至行尾/｜ 的内容（剥尾标点），
-     * 按 ·/｜ 分隔归一（分隔符契约 ·/｜/： 与《锚点格式》规范 v1 同源·点3 锁金样）。
+     * [zCODE] LB-3-B·内嵌/规范单行形态锚点：`【锚点】` 出现在**行中任意位置**（破折号引导 `————【锚点】…`、
+     * 非独立块、混入叙事尾部，及规范 v1 独立单行）。
+     *
+     * **分隔符契约（正式·点3 锁金样）**：`【锚点】{个人位置·船团基线}｜{他人}：在场/不在场（{位置}）`——
+     * `｜` 分隔位置段与在场名单；`：` 引导在场态。**LB-4 规格澄清**：位置段 = 至下一个 `｜`/行尾的**原始整值**，
+     * `·` 不参与切分（船团基线匹配在读取层做前缀比较）。
      */
-    private val EMBEDDED_ANCHOR = Regex("""【锚点】\s*([^｜\n\r]+)""")
+    private val EMBEDDED_ANCHOR = Regex("""【锚点】\s*([^｜\n\r]*)""")
+
+    /** 在场名单段：`{名}：在场` / `{名}：不在场（{位置}）`。 */
+    private val PRESENT_ENTRY = Regex("""([^：｜\n\r]+?)：(在场|不在场)(?:（([^）]*)）)?""")
 
     /** 痕迹超集（含畸形/未闭合形态）：任意锚点标记出现即计——解析全败时有痕迹可依（LB-3-B ③ 前提）。 */
     private val TRACE_MARKS = Regex("""\[场景[：:]|【锚点】|【(?:场景状态|当前场景|场景)】""")
@@ -51,9 +67,9 @@ object AnchorBlockParser {
     /** 从完整回复中提取锚点块（多个时取最后一个 = 模型最终修正的落点）。 */
     fun parseLastBlock(response: String): AnchorBlock? = parseBlocks(response).lastOrNull()
 
-    /** 全量提取（历史/调试用；主链路只消费最后一个）。 */
+    /** 全量提取（历史/调试用；主链路只消费最后一个）。输出按**文中出现位置**排序——多形态混排时"最后输出"= 真正的模型最终落点。 */
     fun parseBlocks(response: String): List<AnchorBlock> {
-        val out = mutableListOf<AnchorBlock>()
+        val out = mutableListOf<Pair<Int, AnchorBlock>>() // (文中偏移, 块)——结尾统一按位置排序
         // ① 行内标记（逐个容错：畸形段静默跳过该段，不炸整块）
         for (m in INLINE_TAG.findAll(response)) {
             val parsed = OutputSanitizer.parseBlockTolerantly(m.groupValues[1], "anchor-inline") { raw ->
@@ -69,26 +85,32 @@ object AnchorBlockParser {
                     }
                 }
             }
-            if (parsed is OutputSanitizer.BlockParseResult.Ok) out.add(parsed.value)
+            if (parsed is OutputSanitizer.BlockParseResult.Ok) out.add(m.range.first to parsed.value)
         }
-        // ②b 内嵌形态（LB-3-B）：`————【锚点】甲板·白团旗舰｜贝克曼：在场` 混在叙事行里——取标记后至行尾/｜（剥尾标点）。
+        // ②b 内嵌/规范单行形态（LB-3-B + 点3 归一）：`————【锚点】甲板·白团旗舰｜贝克曼：在场` ——
+        // 位置段 = 标记后至 ｜/行尾的【原始整值】（LB-4：· 不切分·船名"雷德·佛斯号"保持整值），｜后在场名单提取。
         for (m in EMBEDDED_ANCHOR.findAll(response)) {
+            val presentPart = response.substring(m.range.last + 1).substringBefore('\n')
+            val presentEntries = PRESENT_ENTRY.findAll(presentPart).mapNotNull { pm ->
+                val name = pm.groupValues[1].trim()
+                if (name.isEmpty()) null else PresentEntry(
+                    name = name,
+                    present = pm.groupValues[2] == "在场",
+                    location = pm.groupValues[3].trim(),
+                )
+            }.take(6).toList()
             val parsedEmbedded = OutputSanitizer.parseBlockTolerantly(m.groupValues[1], "anchor-embedded") { raw ->
                 val body = raw.trim().trimEnd('。', '，', '！', '？', '；', '，', ' ', '，')
-                if (body.isEmpty()) null else {
-                    // 与规范 v1 咬合：`{个人位置}·{船团基线}｜{他人}：在场/不在场（位置）`——个人位置取首段，
-                    // ｜ 后的在场名单留给点3 的扩展字段；当前形态只取个人位置 + 次段事件。
-                    val head = body.substringBefore('｜')
-                    val parts = head.split('·', '•').map { it.trim() }.filter { it.isNotEmpty() }
-                    AnchorBlock(locationRaw = parts.firstOrNull().orEmpty(), eventName = parts.drop(1).joinToString("·"))
-                }
+                if (body.isEmpty()) null else AnchorBlock(locationRaw = body, presentList = presentEntries)
             }
             if (parsedEmbedded is OutputSanitizer.BlockParseResult.Ok && parsedEmbedded.value.locationRaw.isNotEmpty()) {
-                out.add(parsedEmbedded.value)
+                out.add(m.range.first to parsedEmbedded.value)
             }
         }
         // ② 块标记（状态机：块头之后的非空行里找键值；连续两行非键值非空即视为块结束）
         val lines = response.lines()
+        // 行号→全文偏移（块式块头位置排序键）
+        fun lineOffset(index: Int): Int = lines.take(index).sumOf { it.length + 1 }
         var i = 0
         while (i < lines.size) {
             val line = lines[i].trim()
@@ -98,13 +120,14 @@ object AnchorBlockParser {
                 val parsedInline = OutputSanitizer.parseBlockTolerantly(headerInline.groupValues[1], "anchor-block-inline") { raw ->
                     AnchorBlock(locationRaw = raw.trim())
                 }
-                if (parsedInline is OutputSanitizer.BlockParseResult.Ok) out.add(parsedInline.value)
+                if (parsedInline is OutputSanitizer.BlockParseResult.Ok) out.add(lineOffset(i) to parsedInline.value)
                 i++
                 continue
             }
             if (!BLOCK_HEADER.matches(line)) { i++; continue }
             var loc: String? = null
             var event: String? = null
+            val headerStartOffset = lineOffset(i) // 块头行位置（排序键）
             var j = i + 1
             var stray = 0
             while (j < lines.size) {
@@ -129,10 +152,10 @@ object AnchorBlockParser {
                 val block = OutputSanitizer.parseBlockTolerantly(loc!!, "anchor-block") { raw ->
                     AnchorBlock(locationRaw = raw.trim(), eventName = event?.trim().orEmpty())
                 }
-                if (block is OutputSanitizer.BlockParseResult.Ok) out.add(block.value)
+                if (block is OutputSanitizer.BlockParseResult.Ok) out.add(headerStartOffset to block.value)
             }
             i = j
         }
-        return out
+        return out.sortedBy { it.first }.map { it.second }
     }
 }

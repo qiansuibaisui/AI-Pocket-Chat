@@ -65,4 +65,39 @@ interface StoryStateDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrReplaceLedger(entries: List<StoryEventLedgerEntity>)
+
+    // ── [zCODE] P1·第3项 船团成员（世界锚点层） ──
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertFleetMember(member: com.situ.aichat.data.local.entity.StoryFleetMemberEntity): Long
+
+    @Query("DELETE FROM story_fleet_members WHERE fleetKey = :fleetKey AND characterUuid = :characterUuid")
+    suspend fun removeFleetMember(fleetKey: String, characterUuid: String)
+
+    /** 同团全部成员（广播扇出取材；无团 = 空）。 */
+    @Query("SELECT * FROM story_fleet_members WHERE fleetKey = :fleetKey")
+    suspend fun membersOfFleet(fleetKey: String): List<com.situ.aichat.data.local.entity.StoryFleetMemberEntity>
+
+    /** 该卡所属团键（最新加入的一团；null = 未配团 fail-open）。 */
+    @Query("SELECT fleetKey FROM story_fleet_members WHERE characterUuid = :characterUuid ORDER BY joinedAt DESC LIMIT 1")
+    suspend fun fleetKeyOfCharacter(characterUuid: String): String?
+
+    // ── [zCODE] 追加项A：角色删除级联清理 ──
+
+    @Query("DELETE FROM story_anchor_snapshots WHERE characterUuid = :characterUuid")
+    suspend fun deleteAnchorsForCharacter(characterUuid: String)
+
+    @Query("DELETE FROM story_event_ledger WHERE characterUuid = :characterUuid")
+    suspend fun deleteLedgerForCharacter(characterUuid: String)
+
+    @Query("DELETE FROM story_fleet_members WHERE characterUuid = :characterUuid")
+    suspend fun deleteFleetMembershipForCharacter(characterUuid: String)
+
+    // ── 备份（第 21 段·整存整取） ──
+
+    @Query("SELECT * FROM story_fleet_members ORDER BY joinedAt ASC")
+    suspend fun allFleetMembers(): List<com.situ.aichat.data.local.entity.StoryFleetMemberEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrReplaceFleetMembers(members: List<com.situ.aichat.data.local.entity.StoryFleetMemberEntity>)
 }

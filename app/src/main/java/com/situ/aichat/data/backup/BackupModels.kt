@@ -78,6 +78,8 @@ data class BackupPackage(
     val storyAnchors: List<StoryAnchorBackupData>? = null,
     /** [zCODE] P1·第2项 已完成事件账本（顶层全局段·第 20 段）：恢复靠 characterUuid 幽灵过滤；老备份无此字段 → 留空。 */
     val storyEvents: List<StoryEventBackupData>? = null,
+    /** [zCODE] P1·第3项 船团成员（顶层全局段·第 21 段·本机配置随整库迁移）：老备份缺失 → 留空（未配团 fail-open）。 */
+    val storyFleetMembers: List<FleetMemberBackupData>? = null,
 )
 
 @Serializable

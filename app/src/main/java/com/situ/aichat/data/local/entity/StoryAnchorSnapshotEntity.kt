@@ -48,6 +48,15 @@ data class StoryAnchorSnapshotEntity(
     val capturedAt: Long = System.currentTimeMillis(),
     /** 幂等键的来源消息（本回合最后一条落库消息）。manual/director 行填事件 uuid。 */
     val relatedMessageUUID: String = "",
+
+    /** [zCODE] P1·第3项：本快照时的船团键（空 = 无团；world_sync 行 = 广播源团键）。 */
+    val fleetKey: String = "",
+
+    /**
+     * [zCODE] P1·第3项：在场名单 JSON（规范式锚点块提取：`[{"name":…,"present":true/false,"location":…}]`）。
+     * 仅规范式提取，系统不做会话参与人推断；**历史行空串不回填**（手动修正兜底留 P3）。
+     */
+    val presentListJson: String = "",
 )
 
 /** 快照写入通道（raw 值即库契约，重命名断历史）。 */
@@ -55,7 +64,10 @@ enum class AnchorSource(val raw: String) {
     DIALOG_BLOCK("dialog_block"),
     DIALOG_CARRYOVER("dialog_carryover"),
     DIRECTOR("director"),
-    MANUAL("manual");
+    MANUAL("manual"),
+
+    /** [zCODE] P1·第3项：船团广播行（**不触发再广播**——防环白名单外；广播行即纯基线，无个体前缀）。 */
+    WORLD_SYNC("world_sync");
 
     companion object {
         fun fromRaw(raw: String): AnchorSource = entries.firstOrNull { it.raw == raw } ?: DIALOG_BLOCK
