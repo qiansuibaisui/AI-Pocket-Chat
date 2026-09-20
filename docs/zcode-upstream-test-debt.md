@@ -18,3 +18,7 @@
 **性质判定**：两类均为「冻结金样」型测试（防提示词意外漂移的看门狗），失败含义 = 上游某次提示词/装配调整后金样未同步再冻结。不阻塞 zcode 任何施工；但**升级合并后若仍失败且上游无对应修复，须核对是否为合并冲突的信号**。
 
 **另记（环境性 1 例，非上游债）**：`ui.story.StoryShareCardRendererTest` > 落盘_写png返回FileProvider_uri —— 本机 Robolectric × FileProvider 根匹配失败（`Failed to find configured root`，摘 `.mod` 后缀对照仍失败 → 与 fork 改动无关，属本机测试环境问题；作者机全绿记录在案）。
+
+---
+
+**环境例第 2 例（2026-09-20·点3 全量轮实证）**：`ui.liuli.chat.sheets.LiuliStickerPickerSheetTest` > tab0空态文案且没有添加钮 —— 全量并发下 Robolectric Compose 空态断言偶发不显示（顺序污染型）；**隔离复跑该类 BUILD SUCCESSFUL**，且点3 改动零触碰贴纸/Compose 链（diff 无交集）→ 定性环境性非回归。与 FileProvider 环境例同挂：全量失败预期口径 = ZD-1~8 + 环境 2 例 = 11。
