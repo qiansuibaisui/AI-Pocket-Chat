@@ -62,6 +62,10 @@ class StoryStateRepository @Inject constructor(
             )
         } else {
             val normalized = AnchorVocabulary.normalize(anchor.locationRaw)
+            // [zCODE] P2·岛名规范：顶层未规范化（如"伟大航路某岛"）→ location_unnormalized 日志（fail-open 不阻塞落锚）
+            if (!AnchorVocabulary.isTopLevelNormalized(anchor.locationRaw)) {
+                Log.w(TAG, "location_unnormalized（顶层非规范岛名，key 走词表降级）raw=${anchor.locationRaw.take(30)}")
+            }
             insertDeduped(
                 StoryAnchorSnapshotEntity(
                     characterUuid = characterUuid,
