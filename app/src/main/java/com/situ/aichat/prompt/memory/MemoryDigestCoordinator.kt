@@ -36,6 +36,7 @@ class MemoryDigestCoordinator @Inject constructor(
     private val contextLog: ContextLogService,
     private val ledger: PromiseLedgerService,
     private val promiseRepository: PromiseRepository,
+    private val momentRepo: com.situ.aichat.data.repository.MomentRepository, // [zCODE] P2·LB-5 本人动态度取材
 ) {
     private val perCharacterLocks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
 
@@ -56,6 +57,9 @@ class MemoryDigestCoordinator @Inject constructor(
 
         // 1. 收集素材（无副作用·失败可无损重收）。
         val material = materialService.collect(character.uuid, userName, settings, now, zone)
+        // [zCODE] P2·LB-5：本人近 7 日动态入摘要范围（终审裁决②摘要范围方案·必改②带归属前缀）——
+        // 实测隔 4 天的本人动态不进记忆（24h 窗口解不了），本人帖子与收到的评论以一行事实格式并入消化素材。
+        val ownMomentsLine = runCatching { collectOwnMomentsLine(character.uuid, character.name) }.getOrDefault("")
 
         // 2. 摘要写回（带素材·校验链零碰）；抛错直接上抛（素材不标记、账本不动·E7）。参数照 MemoryAnalysisTrigger 现值。
         val summary = summaryCoordinator.summarizeAndPersist(
@@ -67,7 +71,10 @@ class MemoryDigestCoordinator @Inject constructor(
             progressiveCompressionEnabled = settings.progressiveCompressionEnabled,
             characterName = character.name,
             userName = userName,
-            extraMaterial = material.text,
+            extraMaterial = buildString {
+                if (ownMomentsLine.isNotEmpty()) append(ownMomentsLine).append("\n")
+                append(material.text)
+            },
             markSummarized = { memoryService.markSummarized(messages) },
         )
 
@@ -144,5 +151,22 @@ class MemoryDigestCoordinator @Inject constructor(
 
         /** 对账瞬态失败重试延迟（图纸 §3.6·E6）。 */
         const val RECONCILE_RETRY_DELAY_MS = 2_000L
+    }
+
+    /**
+     * [zCODE] P2·LB-5：本人近 7 日动态素材行（终审必改②——"【本人动态】{角色名}"归属前缀）。
+     * 一行事实格式（帖子 ≤2），无则空串（零变化）；取材失败无损（调用侧 runCatching）。
+     */
+    private suspend fun collectOwnMomentsLine(characterUuid: String, characterName: String): String {
+        val since = System.currentTimeMillis() - 7L * 24 * 3600 * 1000
+        val posts = momentRepo.recentPostsForCharacter(characterUuid, 4).filter { it.timestamp >= since }.take(2)
+        if (posts.isEmpty()) return ""
+        return buildString {
+            append("【本人动态】").append(characterName.ifBlank { "该角色" }).append("：")
+            posts.forEachIndexed { i, p ->
+                if (i > 0) append("；")
+                append("发了「").append(p.content.take(40)).append("」")
+            }
+        }
     }
 }

@@ -91,7 +91,9 @@ class PromptBuilderRecentDaysTest {
         // 且「不传该参数」与「传空表」两条路输出完全相同（默认值等价）。
         val withEmpty = systemPrompt(emptyList())
         assertFalse("空表不得出标题", withEmpty.contains("【你最近几天的日子】"))
-        assertTrue(withEmpty.contains("【你今天完整的日程】\n[✓已发生] 上午 开店"))
+        // [zCODE] P2·注入头改版（归属标定+D7）：标题含归属括注段，[✓已发生] 行照旧紧随
+        assertTrue(withEmpty.contains("【你今天完整的日程（") && withEmpty.contains("与用户无关"))
+        assertTrue(withEmpty.contains("[✓已发生] 上午 开店"))
 
         val withoutParam = PromptBuilder.buildMessages(
             character = CharacterEntity(uuid = "c1", name = "小雨", creationDate = 0L),
@@ -134,7 +136,7 @@ class PromptBuilderRecentDaysTest {
                 """.trimIndent(),
             ),
         )
-        assertFalse("今天没日程 → 今日日程段不出", out.contains("【你今天完整的日程】"))
+        assertFalse("今天没日程 → 今日日程段不出", out.contains("【你今天完整的日程（"))
     }
 
     @Test
@@ -142,7 +144,7 @@ class PromptBuilderRecentDaysTest {
         // 两边都没数据 → 整个日程模块返空串（= 改动前行为，【此刻】兜底交给 currentMoment）。
         val out = systemPrompt(emptyList(), schedule = null)
         assertFalse(out.contains("【你最近几天的日子】"))
-        assertFalse(out.contains("【你今天完整的日程】"))
+        assertFalse(out.contains("【你今天完整的日程（"))
         assertFalse("连状态标签说明都不该出（整模块为空）", out.contains("【状态标签说明"))
     }
 
@@ -154,7 +156,7 @@ class PromptBuilderRecentDaysTest {
             settings = AppSettings(scheduleSystemEnabled = false),
         )
         assertFalse(out.contains("【你最近几天的日子】"))
-        assertFalse(out.contains("【你今天完整的日程】"))
+        assertFalse(out.contains("【你今天完整的日程（"))
     }
 
     @Test
@@ -173,18 +175,16 @@ class PromptBuilderRecentDaysTest {
             ),
         )
         assertTrue(
-            "段落逐字 + 空行 + 今日日程标题紧随其后",
+            "段落逐字 + 空行分隔 + 新版今日日程标题（归属括注段）紧随其后",
             out.contains(
                 """
                 【你最近几天的日子】
                 9月2日：上午 在家赶稿 → 下午 见客户 → 晚上 追剧
                 9月1日：上午 睡到中午 → 下午 收拾屋子
                 8月31日：全天 出差在外
-
-                【你今天完整的日程】
                 """.trimIndent(),
-            ),
-        )
+            ) && out.contains("【你今天完整的日程（"),
+        ) // [zCODE] P2：注入头改版——逐字块止于段落尾，标题按前缀断言（括注内容不逐字锁）
         assertEquals("今天的「开店」只属于今日日程段", 1, Regex("开店").findAll(out).count())
     }
 }

@@ -52,7 +52,7 @@ class MemoryDigestCoordinatorTest {
         contextLog = mockk(relaxed = true)
         ledger = mockk(relaxed = true)
         promiseRepository = mockk(relaxed = true)
-        coordinator = MemoryDigestCoordinator(summaryCoordinator, memoryService, materialService, contextLog, ledger, promiseRepository)
+        coordinator = MemoryDigestCoordinator(summaryCoordinator, memoryService, materialService, contextLog, ledger, promiseRepository, io.mockk.mockk(relaxed = true)) // [zCODE] P2·LB-5 momentRepo
 
         coEvery { materialService.collect(any(), any(), any(), any(), any()) } returns bundle
         coEvery { promiseRepository.openByCharacter(any()) } returns emptyList()

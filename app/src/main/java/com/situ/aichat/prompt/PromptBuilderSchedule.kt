@@ -54,7 +54,7 @@ internal fun buildScheduleModule(ctx: PromptBuilder.BuildContext): String {
 
     val parts = mutableListOf<String>()
     if (recentDays.isNotEmpty()) parts.add("$recentDays\n")
-    parts.add("【你今天完整的日程】")
+    parts.add("【你今天完整的日程（你的本人行程，与用户无关——用户不在这些行程里，未实际发生的条目不得虚构用户的具体言行与引语）】") // [zCODE] P2·日程归属标定+D7（终审压缩版措辞）
     // 刀4 旧戏份压缩（招3·2026-07-11 过审）：[✓已发生] 事件合并为**一行流水账**——保留时段词、删钟点/
     // 地点/心情（演完的戏只留存在感,降低"拿早晨素材演此刻"的显著度;13:39 被答成清晨的事故根源之二）。
     // [▶️正在]/[⏳未来] 各行原样全细节;段标题与三个时态标签字面 = 红线零碰。

@@ -215,7 +215,10 @@ private fun GalleryEntryRow(
         "${d.monthValue}/${d.dayOfMonth}"
     }
     val periodWord = scheduleTimeOfDayLabel(hour)
-    val summary = session.summaryText?.takeIf { it.isNotBlank() }
+    // [zCODE] P2·LB-6：摘要文本经 ReplyParser 剥离泄漏标签（[/对话] 类裸露——与聊天视图渲染同口径）
+    val summary = session.summaryText?.takeIf { it.isNotBlank() }?.let {
+        com.situ.aichat.prompt.ReplyParser.stripInternalAssistantTags(it).trim().takeIf { s -> s.isNotEmpty() }
+    }
     val footer = listOfNotNull(
         session.durationText.takeIf { it.isNotEmpty() },
         "${mood.emoji} ${mood.label}",
