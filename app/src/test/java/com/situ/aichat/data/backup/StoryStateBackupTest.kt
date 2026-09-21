@@ -34,6 +34,30 @@ class StoryStateBackupTest {
         assertEquals(entity, entity.toExport().toEntity())
     }
 
+    /** [zCODE] 点3 终审复核③：备份段 21 双向——新备份→新包 fleet roundtrip 字段保全。 */
+    @Test fun fleet_member_roundtrip_fields_preserved() {
+        val entity = com.situ.aichat.data.local.entity.StoryFleetMemberEntity(
+            uuid = "u3", fleetKey = "whitebeard", characterUuid = "c1", conversationUuid = "conv-1", joinedAt = 444L,
+        )
+        assertEquals(entity, entity.toExport().toEntity())
+    }
+
+    /** [zCODE] 终审复核③：老备份（无 fleet 字段）→ 新包留空 + 幽灵行跳过（老→新方向）。 */
+    @Test fun fleet_old_backup_missing_and_ghost_rows() {
+        val dao = io.mockk.mockk<com.situ.aichat.data.local.dao.StoryStateDao>(relaxed = true)
+        kotlinx.coroutines.runBlocking {
+            // 老备份：fleetMembers = null → 不写任何成员行
+            restoreStoryState(dao, anchors = null, events = null, fleetMembers = null, existingCharacterUuids = setOf("c1"))
+        }
+        io.mockk.coVerify(exactly = 0) { dao.insertOrReplaceFleetMembers(any()) }
+        // 新备份但成员是幽灵卡（角色已删）→ 过滤后空，同样不写行
+        val ghost = com.situ.aichat.data.local.entity.StoryFleetMemberEntity(fleetKey = "f", characterUuid = "ghost")
+        kotlinx.coroutines.runBlocking {
+            restoreStoryState(dao, anchors = null, events = null, fleetMembers = listOf(ghost.toExport()), existingCharacterUuids = setOf("alive"))
+        }
+        io.mockk.coVerify(exactly = 0) { dao.insertOrReplaceFleetMembers(any()) }
+    }
+
     @Test fun old_backup_null_segments_mean_empty_rebuild() {
         // 老备份（≤18 段）：BackupPackage 两个新字段 null —— kotlinx 反序列化缺字段 → 默认 null（BackupImporter 的
         // Json ignoreUnknownKeys/缺省默认值路径），恢复函数收 null → 不写任何行 = 留空从零建档，不抛。
