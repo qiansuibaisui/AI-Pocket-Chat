@@ -100,4 +100,8 @@ interface StoryStateDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrReplaceFleetMembers(members: List<com.situ.aichat.data.local.entity.StoryFleetMemberEntity>)
+
+    /** [zCODE] P2·建团 UI：现有全部团键（分组选择器数据源·去重升序）。 */
+    @Query("SELECT DISTINCT fleetKey FROM story_fleet_members ORDER BY fleetKey ASC")
+    suspend fun allFleetKeys(): List<String>
 }

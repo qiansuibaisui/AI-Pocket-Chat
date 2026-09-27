@@ -132,6 +132,7 @@ class AfterglowDeferTest {
         service = OfflineAfterglowService(
             conversationRepo, characterRepo, memoryRepo, apiConfigRepo, settingsRepo,
             messageRepo, contextLog, deliverer, assembler, userProfileDao,
+            io.mockk.mockk(relaxed = true), // [zCODE] P2·storyStateRepository（锚点接地 runCatching 容错）
         )
     }
 

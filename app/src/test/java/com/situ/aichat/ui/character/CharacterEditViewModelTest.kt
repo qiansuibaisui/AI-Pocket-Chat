@@ -70,6 +70,7 @@ class CharacterEditViewModelTest {
             membershipService = membershipService,
             personaCompiler = mockk(relaxed = true),
             characterWriteLock = CharacterWriteLock(),
+            storyStateRepository = io.mockk.mockk(relaxed = true), // [zCODE] P2
             appContext = mockk<Context>(relaxed = true),
             savedStateHandle = SavedStateHandle(),
         )
@@ -111,6 +112,7 @@ class CharacterEditViewModelTest {
             membershipService = mockk(relaxed = true),
             personaCompiler = mockk(relaxed = true),
             characterWriteLock = CharacterWriteLock(),
+            storyStateRepository = io.mockk.mockk(relaxed = true), // [zCODE] P2
             appContext = RuntimeEnvironment.getApplication(),
             savedStateHandle = SavedStateHandle(),
         )
@@ -145,6 +147,7 @@ class CharacterEditViewModelTest {
             membershipService = mockk(relaxed = true),
             personaCompiler = mockk(relaxed = true),
             characterWriteLock = CharacterWriteLock(),
+            storyStateRepository = io.mockk.mockk(relaxed = true), // [zCODE] P2
             appContext = RuntimeEnvironment.getApplication(),
             savedStateHandle = SavedStateHandle(mapOf("characterUuid" to "c1")),
         )

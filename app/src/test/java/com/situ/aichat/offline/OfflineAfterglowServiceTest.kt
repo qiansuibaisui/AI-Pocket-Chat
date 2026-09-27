@@ -121,6 +121,7 @@ class OfflineAfterglowServiceTest {
         service = OfflineAfterglowService(
             conversationRepo, characterRepo, memoryRepo, apiConfigRepo, settingsRepo,
             messageRepo, contextLog, deliverer, assembler, userProfileDao,
+            io.mockk.mockk(relaxed = true), // [zCODE] P2
         )
     }
 

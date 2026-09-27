@@ -47,6 +47,7 @@ class OfflineAfterglowService @Inject constructor(
     private val deliverer: ProactiveReplyDeliverer,
     private val promptAssembler: OfflineAfterglowPromptAssembler,
     private val userProfileDao: UserProfileDao,
+    private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P2·锚点接地
 ) {
 
     /**
@@ -119,7 +120,12 @@ class OfflineAfterglowService @Inject constructor(
                 "${TimeAnchorFormatter.formatCurrentMoment(nowInstant)}——发消息时以这个真实时刻为准，" +
                 "日期和时段都不要说错，也不要被见面时的场景带偏时间感。" +
                 "请你主动给${userName}发一条见面后的余温消息：1-2 句、口语、像发微信一样自然，回味见面的某个细节或心情即可；" +
-                "不要用任何 [标签]，不要长篇抒情，不要问候式空话。）"
+                "不要用任何 [标签]，不要长篇抒情，不要问候式空话。）" +
+                // [zCODE] P2·切片二（点1挂账必答题落地）：锚点接地——fresh(AGING) 锚点注入当前真实位置，
+                // 防止"人在海上却发'在酒馆想起你'"类穿帮（v3 第4项"接地注入"子集·fail-open 无锚点省略）。
+                com.situ.aichat.proactive.ProactiveAnchorGrounding.groundingFor(
+                    storyStateRepository, character.uuid, character.name, nowInstant.toEpochMilli(),
+                )
         val messages = promptAssembler.assemble(convo, character, settings, nowInstant) +
             ChatMessageDto(role = "system", content = systemInstruction)
 

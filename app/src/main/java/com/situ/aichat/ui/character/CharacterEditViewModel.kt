@@ -230,12 +230,48 @@ class CharacterEditViewModel @Inject constructor(
     private val personaCompiler: PersonaCompileUseCase,
     /** 修缮卷 J10：编辑页保存段（人设四列 + 成长两列）进角色写锁、锁内 fresh 读只写改过的维（F20）。 */
     private val characterWriteLock: CharacterWriteLock,
+    private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P2·建团 UI
     @ApplicationContext private val appContext: Context,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     val editingUuid: String? = savedStateHandle["characterUuid"]
     val isEditing: Boolean = editingUuid != null
+
+    // ── [zCODE] P2·同团分组（编辑模式·world_sync 配置面·DAO 点3 首个消费面） ──
+
+    private val _fleetConfig = MutableStateFlow<com.situ.aichat.data.repository.StoryStateRepository.FleetConfig?>(
+        com.situ.aichat.data.repository.StoryStateRepository.FleetConfig(null, emptyList(), emptyList()),
+    )
+    val fleetConfig: StateFlow<com.situ.aichat.data.repository.StoryStateRepository.FleetConfig?> = _fleetConfig.asStateFlow()
+    val fleetInput = MutableStateFlow("")
+
+    fun suggestFleetKey(joinedWorld: Boolean, homeCityId: String): String? =
+        com.situ.aichat.data.repository.StoryStateRepository.suggestFleetKey(joinedWorld, homeCityId)
+
+    fun refreshFleetConfig() {
+        val uuid = editingUuid ?: return
+        viewModelScope.launch {
+            _fleetConfig.value = runCatching { storyStateRepository.fleetConfigFor(uuid) }.getOrDefault(_fleetConfig.value)
+        }
+    }
+
+    /** 加入/建团（conversationUuid 传空 = 仅写行不投 ⚓ 通知——编辑页无活跃会话上下文时宁缺勿造）。 */
+    fun joinFleet(fleetKey: String) {
+        val uuid = editingUuid ?: return
+        viewModelScope.launch {
+            storyStateRepository.joinFleet(uuid, fleetKey, conversationUuid = "")
+            refreshFleetConfig()
+        }
+    }
+
+    fun leaveFleet() {
+        val uuid = editingUuid ?: return
+        viewModelScope.launch {
+            storyStateRepository.leaveFleet(uuid)
+            refreshFleetConfig()
+        }
+    }
 
     /** 该角色是否启用了专属提示词模块覆盖（仅编辑模式有意义）。 */
     private val _hasModuleOverride = MutableStateFlow(false)

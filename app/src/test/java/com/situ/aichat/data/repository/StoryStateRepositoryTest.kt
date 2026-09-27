@@ -7,6 +7,7 @@ import com.situ.aichat.data.local.entity.StoryEventSource
 import com.situ.aichat.prompt.AnchorBlockParser
 import io.mockk.coEvery
 import io.mockk.coVerify
+
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.test.runTest
@@ -226,5 +227,38 @@ class StoryStateRepositoryTest {
         val personal = previous(5L, 5L)
         coEvery { dao.latestSnapshotFor("c1") } returns personal
         assertEquals(personal.uuid, repo.effectiveAnchorFor("c1")?.uuid)
+    }
+
+    // ── [zCODE] P2·建团 UI 门面（预置追加：切片一测试托底——预填建议/配置视图/加入退出） ──
+
+    @Test fun suggest_fleet_key_prefills_from_joined_world_home_city() {
+        // 预填建议：入世卡 → worldHomeCityId；未入世/空城 → null
+        assertEquals("city_yunye", StoryStateRepository.suggestFleetKey(joinedWorld = true, worldHomeCityId = "city_yunye"))
+        assertEquals(null, StoryStateRepository.suggestFleetKey(joinedWorld = false, worldHomeCityId = "city_yunye"))
+        assertEquals(null, StoryStateRepository.suggestFleetKey(joinedWorld = true, worldHomeCityId = ""))
+    }
+
+    @Test fun fleet_config_view_and_join_leave_roundtrip() = runTest {
+        // 配置视图：当前团 + 同团成员（除本卡）+ 全部团键
+        coEvery { dao.fleetKeyOfCharacter("c1") } returns "wb"
+        coEvery { dao.membersOfFleet("wb") } returns listOf(fleetMember("wb", "c1", "conv-1"), fleetMember("wb", "c2"))
+        coEvery { dao.allFleetKeys() } returns listOf("wb", "sp")
+        val cfg = repo.fleetConfigFor("c1")
+        assertEquals("wb", cfg.fleetKey)
+        assertEquals(listOf("c2"), cfg.mateUuids)
+        assertEquals(listOf("wb", "sp"), cfg.allFleetKeys)
+        // 加入：IGNORE 幂等调用（conversationUuid 登记为 ⚓ 投递目标）
+        repo.joinFleet("c1", "wb", "conv-1")
+        coVerify { dao.insertFleetMember(withArg { it.fleetKey == "wb" && it.characterUuid == "c1" && it.conversationUuid == "conv-1" }) }
+        // 空键拒收
+        repo.joinFleet("c1", "  ", "x")
+        coVerify(exactly = 1) { dao.insertFleetMember(any()) }
+        // 退出：查团键后移除
+        repo.leaveFleet("c1")
+        coVerify { dao.removeFleetMember("wb", "c1") }
+        // 未配团退出 = no-op（只验 c9 的移除未被调用——c1 的移除是上面合法调用的）
+        coEvery { dao.fleetKeyOfCharacter("c9") } returns null
+        repo.leaveFleet("c9")
+        coVerify(exactly = 0) { dao.removeFleetMember(any(), "c9") }
     }
 }

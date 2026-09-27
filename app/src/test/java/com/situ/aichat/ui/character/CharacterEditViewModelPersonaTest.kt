@@ -82,6 +82,7 @@ class CharacterEditViewModelPersonaTest {
         membershipService = mockk(relaxed = true),
         personaCompiler = compiler,
         characterWriteLock = CharacterWriteLock(),
+        storyStateRepository = io.mockk.mockk(relaxed = true), // [zCODE] P2
         appContext = RuntimeEnvironment.getApplication(),
         savedStateHandle = if (editingUuid == null) SavedStateHandle() else SavedStateHandle(mapOf("characterUuid" to editingUuid)),
     )

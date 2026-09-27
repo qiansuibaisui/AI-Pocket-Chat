@@ -35,6 +35,7 @@ import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -476,6 +477,11 @@ fun CharacterEditScreen(
                 )
             }
 
+            // ---- [zCODE] P2·同团分组（仅编辑模式·world_sync 配置面·建团名单最小 UI） ----
+            if (viewModel.isEditing) {
+                FleetMembershipSection(viewModel = viewModel)
+            }
+
             // ---- 世界观（世界书绑定·仅编辑模式·WB7c 契约 FABLE5_WORLDBOOK_PROPOSAL.md §12.5） ----
             if (viewModel.isEditing) {
                 SectionHeader(stringResource(R.string.wb_binding_section))
@@ -574,4 +580,46 @@ private fun yearsSince(millis: Long): Int {
     var age = now.get(Calendar.YEAR) - birth.get(Calendar.YEAR)
     if (now.get(Calendar.DAY_OF_YEAR) < birth.get(Calendar.DAY_OF_YEAR)) age--
     return age
+}
+
+/**
+ * [zCODE] P2·建团名单最小 UI（设计切片一·仅编辑模式）：分组输入（joinedWorld 预填建议）+
+ * 现有团键 chips + 加入/退出 + 同团成员数展示。world_sync 广播/防环全自动（点3 就绪）。
+ */
+@Composable
+private fun FleetMembershipSection(viewModel: CharacterEditViewModel) {
+    val config by viewModel.fleetConfig.collectAsState()
+    var input by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.refreshFleetConfig() }
+
+    SectionHeader("同团分组")
+    val current = config?.fleetKey
+    if (current != null) {
+        Column {
+            Text("当前团：$current（成员 ${((config?.mateUuids?.size ?: 0) + 1)} 卡）", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(6.dp))
+            AppButton(onClick = { viewModel.leaveFleet() }, style = AppButtonStyle.Tonal) { Text("退出该团") }
+        }
+    } else {
+        Column {
+            Text("未配团（单卡行为，world_sync 零副作用）", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(6.dp))
+            com.situ.aichat.ui.designsystem.AppTextField(
+                value = input,
+                onValueChange = { input = it },
+                label = "团键（如 whitebeard）",
+                singleLine = true,
+            )
+            Spacer(Modifier.height(6.dp))
+            AppButton(
+                onClick = { if (input.isNotBlank()) viewModel.joinFleet(input) },
+                enabled = input.isNotBlank(),
+            ) { Text("加入/建团") }
+            val keys = config?.allFleetKeys.orEmpty()
+            if (keys.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text("现有团：${keys.joinToString("、")}", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
 }

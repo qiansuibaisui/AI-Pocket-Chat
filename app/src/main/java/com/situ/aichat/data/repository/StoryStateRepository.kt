@@ -343,6 +343,42 @@ class StoryStateRepository @Inject constructor(
         dao.membersOfFleet(fleet).map { it.characterUuid }.filter { it != characterUuid }
     }
 
+    // ── [zCODE] P2·建团 UI 门面（角色卡管理"同团分组"配置面·DAO 点3 就绪的首个消费面） ──
+
+    /** 建团配置视图：本卡当前团键 + 同团成员 + 全部现有团键（选择器数据源）。 */
+    data class FleetConfig(
+        val fleetKey: String?,
+        val mateUuids: List<String>,
+        val allFleetKeys: List<String>,
+    )
+
+    suspend fun fleetConfigFor(characterUuid: String): FleetConfig = withContext(Dispatchers.IO) {
+        val fleet = dao.fleetKeyOfCharacter(characterUuid)
+        FleetConfig(
+            fleetKey = fleet,
+            mateUuids = fleet?.let { f -> dao.membersOfFleet(f).map { it.characterUuid }.filter { it != characterUuid } }.orEmpty(),
+            allFleetKeys = dao.allFleetKeys(),
+        )
+    }
+
+    /**
+     * 加入团（建团=首个成员）。joinedWorld 预填建议由 UI 层 [suggestFleetKey] 给默认值；IGNORE 幂等。
+     * [conversationUuid] = ⚓ world_sync 通知投递目标（自动登记该卡最新会话）。
+     */
+    suspend fun joinFleet(characterUuid: String, fleetKey: String, conversationUuid: String) = withContext(Dispatchers.IO) {
+        val key = fleetKey.trim()
+        if (key.isEmpty()) return@withContext
+        dao.insertFleetMember(
+            com.situ.aichat.data.local.entity.StoryFleetMemberEntity(fleetKey = key, characterUuid = characterUuid, conversationUuid = conversationUuid),
+        )
+    }
+
+    /** 退出团（单卡粒度；同团其他成员不受影响）。 */
+    suspend fun leaveFleet(characterUuid: String) = withContext(Dispatchers.IO) {
+        val fleet = dao.fleetKeyOfCharacter(characterUuid) ?: return@withContext
+        dao.removeFleetMember(fleet, characterUuid)
+    }
+
     /** [zCODE] P4 预留：director 广播语义 = applyDirectorEvent 落行后调 [broadcastToFleetMates]（源=director 在白名单）。 */
 
     /** [zCODE] 追加项A：角色删除级联清理（CharacterDeletionCleaner 调）。 */
@@ -424,8 +460,15 @@ class StoryStateRepository @Inject constructor(
         return snapshot
     }
 
-    private companion object {
+    companion object {
         const val TAG = "StoryStateRepo"
+
+        /**
+         * joinedWorld 预填建议（P2 设计切片一）：已入世卡默认团键 = worldHomeCityId（只作预填不自动写）。
+         * 伴生纯函数供 UI/VM/测试共用。
+         */
+        fun suggestFleetKey(joinedWorld: Boolean, worldHomeCityId: String): String? =
+            if (joinedWorld && worldHomeCityId.isNotBlank()) worldHomeCityId else null
 
         /** [zCODE] 读取处5（评审附加条件3）：仅这两级登记插日程星标——dialog_ack（聊天随口确认）不插。 */
         val SCHEDULE_STAR_SOURCES = setOf(StoryEventSource.OFFLINE_MEETING, StoryEventSource.DIRECTOR)

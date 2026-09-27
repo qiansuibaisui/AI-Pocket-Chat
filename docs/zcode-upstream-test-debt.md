@@ -21,4 +21,4 @@
 
 ---
 
-**环境例第 2 例（2026-09-20·点3 全量轮实证）**：`ui.liuli.chat.sheets.LiuliStickerPickerSheetTest` > tab0空态文案且没有添加钮 —— 全量并发下 Robolectric Compose 空态断言偶发不显示（顺序污染型）；**隔离复跑该类 BUILD SUCCESSFUL**，且点3 改动零触碰贴纸/Compose 链（diff 无交集）→ 定性环境性非回归。与 FileProvider 环境例同挂：全量失败预期口径 = ZD-1~8 + 环境 2 例 = 11。
+**环境例第 2 例（2026-09-20·点3 全量轮实证）**：`ui.liuli.chat.sheets.LiuliStickerPickerSheetTest` > tab0空态文案且没有添加钮 —— 全量并发下 Robolectric Compose 空态断言偶发不显示（顺序污染型）；**隔离复跑该类 BUILD SUCCESSFUL**，且点3 改动零触碰贴纸/Compose 链（diff 无交集）→ 定性环境性非回归。与 FileProvider 环境例同挂：全量失败预期口径 = ZD-1~8 + 环境 2 例 = 11。2026-09-22 路径A终判：贴纸第二例（三段段名照抄且可切换）隔离复跑 BUILD SUCCESSFUL——与 tab0 同源顺序污染，环境 2 例同源定性成立。

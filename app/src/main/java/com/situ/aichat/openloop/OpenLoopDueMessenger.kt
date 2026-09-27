@@ -41,6 +41,7 @@ class OpenLoopDueMessenger @Inject constructor(
     private val settingsRepo: SettingsRepository,
     private val contextLog: ContextLogService,
     private val deliverer: ProactiveReplyDeliverer,
+    private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P2·锚点接地
 ) {
 
     /** 到点入口（worker 驱动）。守卫→生成→落库→通知→置 resolved；任何守卫/校验不过均静默、loop 保持 open。 */
@@ -75,7 +76,9 @@ class OpenLoopDueMessenger @Inject constructor(
         val system = "你是「${character.name}」。人设：$persona。$styleClause\n" +
             "你们之前聊天时提到过：${loop.content}——就是今天。" +
             "${TimeAnchorFormatter.formatCurrentMoment(Instant.now())}，发的消息要贴合这个真实时段。\n" +
-            "请以角色身份主动给对方发一条 20~60 字的短消息，自然地表达你记得这件事、惦记着对方（比如祝好运、问问进展、或轻轻提一句）。像平时发微信那样说话。只输出消息正文，不要引号、不要任何标签或旁白。"
+            "请以角色身份主动给对方发一条 20~60 字的短消息，自然地表达你记得这件事、惦记着对方（比如祝好运、问问进展、或轻轻提一句）。像平时发微信那样说话。只输出消息正文，不要引号、不要任何标签或旁白。" +
+            // [zCODE] P2·切片二：锚点接地（与余温同款·fail-open 无锚点省略）
+            com.situ.aichat.proactive.ProactiveAnchorGrounding.groundingFor(storyStateRepository, character.uuid, character.name)
         val messages = listOf(
             ChatMessageDto(role = "system", content = system),
             ChatMessageDto(role = "user", content = "请发这条消息。"),

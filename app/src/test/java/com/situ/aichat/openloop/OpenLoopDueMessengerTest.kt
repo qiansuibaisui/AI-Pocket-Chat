@@ -111,6 +111,7 @@ class OpenLoopDueMessengerTest {
         messenger = OpenLoopDueMessenger(
             conversationRepo, characterRepo, openLoopRepository, apiConfigRepo,
             settingsRepo, contextLog, deliverer,
+            io.mockk.mockk(relaxed = true), // [zCODE] P2·storyStateRepository（锚点接地 runCatching 容错）
         )
     }
 
