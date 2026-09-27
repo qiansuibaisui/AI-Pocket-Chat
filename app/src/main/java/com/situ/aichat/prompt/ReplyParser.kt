@@ -35,7 +35,7 @@ object ReplyParser {
         Regex("""<(?:\s*\|?\s*)?(?:/\s*\|?\s*)?DSML\s*\|?\s*[^>]*>"""),
         Regex("""\[offline_invite\|[^\]]+\]"""),
         Regex("""\[offline_end\]"""),
-        Regex("""\{[^{}]*"type"\s*:\s*"offline_(?:end|invite)"[^{}]*\}"""),
+        // [zCODE] LB-6b：JSON 控制载荷原 regex 移至 stripJsonControlPayloadLines（行级过滤更干净——原 regex 剥后残留空行）
     )
 
     /**
@@ -176,7 +176,7 @@ object ReplyParser {
 
     // MARK: - 文本清理
 
-    /** 剥离内部标签（思考标签 → 元认知 CoT → DSML → internalTags → 线下叙事 → MiniMax → 压缩换行）。 */
+    /** 剥离内部标签（思考标签 → 元认知 CoT → DSML → internalTags → 线下叙事 → MiniMax → JSON 控制载荷 → 压缩换行）。 */
     fun stripInternalAssistantTags(
         content: String,
         preserveOfflineTags: Boolean = false,
@@ -194,7 +194,32 @@ object ReplyParser {
         if (!preserveMiniMaxVoiceTags) {
             result = stripMiniMaxVoiceTags(result)
         }
+        // [zCODE] LB-6b：剥离独立成行的 JSON 控制载荷（{"type":"offline_end",…}——LB-6 标签形态的 JSON 变体）。
+        // 形态匹配不做 JSON.parse 门槛（畸形载荷也要剥，容错优先）；只剥整行（首尾空白容忍），正文中间 JSON 不动。
+        result = stripJsonControlPayloadLines(result)
         return result.replace("\n\n\n", "\n\n").trim()
+    }
+
+    /**
+     * [zCODE] LB-6b：独立成行 JSON 控制载荷剥除。判定三条件（全部满足才剥）：
+     * ①整行（允许首尾空白）以 `{` 开头以 `}` 结尾；②含控制语义字段名（type/finalMood/action 等）；
+     * ③不含叙述性文字（纯键值形态）。连续多行载荷全剥、不堆积空行。正文中间的 JSON 字样不在此域（不剥）。
+     */
+    private val jsonControlPayloadLine = Regex(
+        """^[ \t]*\{[ \t]*"[^"]+"[ \t]*:[ \t]*"[^"]*"(?:[ \t]*,[ \t]*"[^"]+"[ \t]*:[ \t]*"[^"]*")*[ \t]*\}[ \t]*$""",
+        RegexOption.MULTILINE,
+    )
+    private val controlFieldNames = setOf("type", "finalMood", "action", "location", "activity", "invitation", "farewell", "changeKind")
+
+    private fun stripJsonControlPayloadLines(content: String): String {
+        // 逐行判定（比 MULTILINE 正则更精准——剥除时同步消费行尾换行，不留空行残留）
+        return content.lines().filter { line ->
+            val t = line.trim()
+            if (!t.startsWith("{") || !t.endsWith("}")) return@filter true // 非 JSON 行不动
+            if (!jsonControlPayloadLine.containsMatchIn(t)) return@filter true // 形态不符不动
+            val hasControlField = controlFieldNames.any { "\"$it\"" in t }
+            !hasControlField // 有控制字段 → false=过滤掉
+        }.joinToString("\n").replace(Regex("\n{3,}"), "\n\n")
     }
 
     fun stripMiniMaxVoiceTags(content: String): String {
