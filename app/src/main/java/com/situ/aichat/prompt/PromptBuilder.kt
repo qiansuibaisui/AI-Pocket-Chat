@@ -420,8 +420,12 @@ object PromptBuilder {
             // AnchorInjectionBuilder 防御：40 字符截断 + 换行折叠，评审附加条件4）。三空 → buildModule 返回 ""，零改既有输出。
             val anchorBlock = AnchorInjectionBuilder.buildModule(storyAnchor, completedEvents, now.toEpochMilli(), regenSteps)
             // [zCODE] P3 中继 2·消费侧注入：新闻转述层（据报道+防补充红线·含 NewsPipelineService.newsInjectionFor 预格式化）
-            val combinedBlock = listOfNotNull(anchorBlock.ifEmpty { null }, newsInjection?.ifBlank { null })
-                .joinToString("\n\n")
+            // [zCODE] P4 前置件 0：认知边界六条常驻注入（正本全文·与锚点/新闻同批·每回合恒在场）
+            val combinedBlock = listOfNotNull(
+                CognitiveBoundaryInjection.BLOCK,
+                anchorBlock.ifEmpty { null },
+                newsInjection?.ifBlank { null },
+            ).joinToString("\n\n")
             val finalSystem = if (combinedBlock.isEmpty()) systemPrompt else "$systemPrompt\n\n$combinedBlock"
             chatMessages.add(ChatMessageDto(role = ROLE_SYSTEM, content = finalSystem))
         }
