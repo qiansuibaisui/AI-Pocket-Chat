@@ -421,9 +421,10 @@ object PromptBuilder {
             val anchorBlock = AnchorInjectionBuilder.buildModule(storyAnchor, completedEvents, now.toEpochMilli(), regenSteps)
             // [zCODE] P3 中继 2·消费侧注入：新闻转述层（据报道+防补充红线·含 NewsPipelineService.newsInjectionFor 预格式化）
             // [zCODE] P4 前置件 0：认知边界六条常驻注入（正本全文·与锚点/新闻同批·每回合恒在场）
+            val alwaysMacros = promptMacros(character, userProfile, strings)
             val combinedBlock = listOfNotNull(
-                resolveWorld(CognitiveBoundaryInjection.BLOCK), // [zCODE] P4：宏解析（{{user}}/{{char}}——认知边界全文含宏占位）
-                resolveWorld(FosterDaughterEntry.BLOCK), // [zCODE] P4：养女条目（同款宏解析·引用闭环）
+                applyPromptMacros(CognitiveBoundaryInjection.BLOCK, alwaysMacros), // [zCODE] P4：宏解析（主宏映射·非 worldMacros——后者无世界书时为空）
+                applyPromptMacros(FosterDaughterEntry.BLOCK, alwaysMacros), // [zCODE] P4：养女条目（同款）
                 anchorBlock.ifEmpty { null },
                 newsInjection?.ifBlank { null },
             ).joinToString("\n\n")
