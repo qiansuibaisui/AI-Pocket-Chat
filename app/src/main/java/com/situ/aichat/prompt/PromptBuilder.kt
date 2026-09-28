@@ -423,6 +423,7 @@ object PromptBuilder {
             // [zCODE] P4 前置件 0：认知边界六条常驻注入（正本全文·与锚点/新闻同批·每回合恒在场）
             val combinedBlock = listOfNotNull(
                 CognitiveBoundaryInjection.BLOCK,
+                FosterDaughterEntry.BLOCK, // [zCODE] P4：养女条目（认知边界一.1 引用闭环）
                 anchorBlock.ifEmpty { null },
                 newsInjection?.ifBlank { null },
             ).joinToString("\n\n")

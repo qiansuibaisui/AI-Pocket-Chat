@@ -42,6 +42,14 @@ class CognitiveBoundaryInjectionTest {
         assertTrue(CognitiveBoundaryInjection.BLOCK.contains("无靠港记录不得出现陆地场景"))
     }
 
+    @Test fun foster_daughter_entry_resolves_cognitive_boundary_reference() {
+        assertTrue(FosterDaughterEntry.BLOCK.contains("白胡子的养女"))
+        assertTrue(FosterDaughterEntry.BLOCK.contains("认知分层规则"))
+        assertTrue(FosterDaughterEntry.BLOCK.contains("①"))
+        assertTrue(FosterDaughterEntry.BLOCK.contains("②"))
+        assertTrue(FosterDaughterEntry.BLOCK.contains("③"))
+    }
+
     @Test fun fullwidth_bracket_typo_fixed() {
         // 正本一.1 自带 {{user}｝ 全角闭括号 → 誊入时统一修为半角 {{user}}
         assertFalse("不得残留全角闭括号 ｝", CognitiveBoundaryInjection.BLOCK.contains("｝"))
