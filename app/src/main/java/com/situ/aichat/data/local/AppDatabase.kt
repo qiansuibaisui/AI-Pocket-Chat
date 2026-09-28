@@ -161,8 +161,11 @@ import com.situ.aichat.data.local.entity.WorldUserResidentEntity
         StoryEventLedgerEntity::class,
         // [zCODE] P1·第3项 世界锚点层：船团成员映射（联合唯一 (fleetKey, characterUuid)·world_sync 广播扇出取材）。
         com.situ.aichat.data.local.entity.StoryFleetMemberEntity::class,
+        // [zCODE] P3·摩根斯新闻管道：新闻事件条目（不可变）+ 触达记录（认知矩阵"转述层"行·唯一索引幂等）。
+        com.situ.aichat.data.local.entity.NewsEventEntity::class,
+        com.situ.aichat.data.local.entity.NewsDeliveryEntity::class,
     ],
-    version = 51,
+    version = 52,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -200,6 +203,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun ourDayDao(): OurDayDao
     // [zCODE] P1·第2项：锚点中央登记两表（写入口唯一 = StoryStateRepository）。
     abstract fun storyStateDao(): StoryStateDao
+    // [zCODE] P3·摩根斯新闻管道两表（写入口唯一 = NewsPipelineService）。
+    abstract fun newsPipelineDao(): com.situ.aichat.data.local.dao.NewsPipelineDao
     abstract fun userStoryTemplateDao(): UserStoryTemplateDao
 
     companion object {

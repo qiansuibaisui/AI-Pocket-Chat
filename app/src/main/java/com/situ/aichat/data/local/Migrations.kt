@@ -762,6 +762,31 @@ val MIGRATION_50_51 = object : Migration(50, 51) {
     }
 }
 
+/**
+ * [zCODE] P3·摩根斯新闻管道 v51→v52：新建 `news_events`（新闻事件条目·不可变）+
+ * `news_deliveries`（触达记录=认知矩阵"转述层"行·唯一索引 (newsEventUuid, targetCharacterUuid) 幂等）。
+ * DDL 逐字取自 Room 生成 52.json；纯增量·旧表零丢失。
+ */
+val MIGRATION_51_52 = object : Migration(51, 52) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `news_events` (`uuid` TEXT NOT NULL, `characterUuid` TEXT NOT NULL, " +
+                "`characterName` TEXT NOT NULL, `locationKey` TEXT NOT NULL, `eventSummary` TEXT NOT NULL, " +
+                "`severityRaw` TEXT NOT NULL, `occurredAt` INTEGER NOT NULL, `sourceRaw` TEXT NOT NULL, " +
+                "`sourceRefUuid` TEXT NOT NULL, PRIMARY KEY(`uuid`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_news_events_characterUuid` ON `news_events` (`characterUuid`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_news_events_occurredAt` ON `news_events` (`occurredAt`)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `news_deliveries` (`uuid` TEXT NOT NULL, `newsEventUuid` TEXT NOT NULL, " +
+                "`targetCharacterUuid` TEXT NOT NULL, `knowledgeLayer` TEXT NOT NULL, `sourceTag` TEXT NOT NULL, " +
+                "`deliveredAt` INTEGER NOT NULL, `detailLevel` INTEGER NOT NULL, `narrativeText` TEXT NOT NULL, PRIMARY KEY(`uuid`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_news_deliveries_targetCharacterUuid` ON `news_deliveries` (`targetCharacterUuid`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_news_deliveries_newsEventUuid_targetCharacterUuid` ON `news_deliveries` (`newsEventUuid`, `targetCharacterUuid`)")
+    }
+}
+
 /** 全部迁移（按序），注入 Room.databaseBuilder().addMigrations(*ALL_MIGRATIONS)。 */
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
@@ -814,4 +839,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_48_49,
     MIGRATION_49_50,
     MIGRATION_50_51,
+    MIGRATION_51_52,
 )

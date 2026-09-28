@@ -134,6 +134,7 @@ class MeetingSummaryInstantGistTest {
         conversationRepo, messageRepo, characterRepo, memoryRepo, contextLog,
         apiConfigRepo, sessionExtractor, healStore, promiseLedgerService, userProfileDao,
         mockk(relaxed = true), // [zCODE] P1·第2项：storyStateRepository
+        mockk(relaxed = true), // [zCODE] P3：newsPipeline
     )
 
     /** completion 有默认参 → 生产侧经 $default 路由：stub 须给全 9 个匹配器（同既有协调器测）。 */

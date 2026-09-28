@@ -44,6 +44,7 @@ class CharacterDeletionCleaner @Inject constructor(
     private val currencyDao: CurrencyDao,
     private val giftDao: GiftDao,
     private val storyStateRepository: StoryStateRepository, // [zCODE] P1·第3项 追加项A：锚点三表级联
+    private val newsPipeline: com.situ.aichat.morgans.NewsPipelineService, // [zCODE] P3：新闻三表级联
     private val notificationTemplateDao: NotificationTemplateDao,
     private val notificationDeliveryDao: NotificationDeliveryDao,
     private val notificationWindowStatsDao: NotificationWindowStatsDao,
@@ -107,6 +108,9 @@ class CharacterDeletionCleaner @Inject constructor(
         // [zCODE] P1·第3项 追加项A：锚点中央登记三表级联（快照/账本孤儿行 + 船团成员关系——不删则广播扇出
         // 会持续命中幽灵卡、名片锚点行读到已删卡残留）。
         storyStateRepository.deleteAllForCharacter(uuid)
+
+        // [zCODE] P3·摩根斯新闻管道级联：主角事件+全部触达行（不删则幽灵卡新闻持续传播）。
+        newsPipeline.deleteAllForCharacter(uuid)
 
 
         // ③ 通知台账（模板/投递记录/窗口统计）= iOS cleanupNotificationData 的 DB 部分。必须在 ④ 之后（见上）。

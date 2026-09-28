@@ -59,6 +59,7 @@ class OfflineSummaryRetryCoordinator @Inject constructor(
     private val promiseLedgerService: PromiseLedgerService,
     private val userProfileDao: UserProfileDao,
     private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项：见面事件回流
+    private val newsPipeline: com.situ.aichat.morgans.NewsPipelineService, // [zCODE] P3：见面结束→新闻管道
 ) {
 
     /** 手动重试进行中的 sessionId 集合（驱动「简版」徽章转圈态；见 [manuallyRetry] 守卫注释）。 */
@@ -200,6 +201,21 @@ class OfflineSummaryRetryCoordinator @Inject constructor(
                     nowMillis = now,
                 )
             }.onFailure { Log.w(TAG, "见面事件回流登记失败（不影响摘要）session=$sessionId") }
+            // [zCODE] P3·摩根斯新闻管道（触发源 1·线下见面结束）：摘要成功 → 发布新闻条目 → 不在场同团角色转述层触达。
+            // 幂等：sourceRefUuid=sessionId；亲历者=本角色不走新闻管道（防①②重叠）；失败仅日志不影响摘要。
+            runCatching {
+                newsPipeline.publish(
+                    draft = com.situ.aichat.morgans.NewsEventDraft(
+                        characterUuid = character.uuid,
+                        characterName = character.name,
+                        locationKey = meta.location.ifBlank { "某处" },
+                        eventSummary = draft.summary.take(80),
+                        sourceRefUuid = sessionId,
+                    ),
+                    participants = listOf(character.uuid),
+                    nowMillis = now,
+                )
+            }.onFailure { Log.w(TAG, "摩根斯新闻发布失败（不影响摘要）session=$sessionId: ${it.message}") }
             Log.d(TAG, "见面摘要 v2 提取成功 session=$sessionId")
             RetryOutcome.SUCCESS
         } catch (e: CancellationException) {

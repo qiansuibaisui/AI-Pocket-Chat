@@ -96,4 +96,5 @@ object DatabaseModule {
     @Provides fun provideOurDayDao(db: AppDatabase): OurDayDao = db.ourDayDao()
     @Provides fun provideUserStoryTemplateDao(db: AppDatabase): UserStoryTemplateDao = db.userStoryTemplateDao()
     @Provides fun provideStoryStateDao(db: AppDatabase): com.situ.aichat.data.local.dao.StoryStateDao = db.storyStateDao() // [zCODE] P1·第2项
+    @Provides fun provideNewsPipelineDao(db: AppDatabase): com.situ.aichat.data.local.dao.NewsPipelineDao = db.newsPipelineDao() // [zCODE] P3
 }

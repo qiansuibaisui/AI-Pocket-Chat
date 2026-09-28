@@ -42,6 +42,7 @@ class CharacterDeletionCleanerTest {
             settingsRepository = settingsRepository,
             storyDao = storyDao,
             storyStateRepository = mockk(relaxed = true), // [zCODE] 点3 追加项A
+            newsPipeline = io.mockk.mockk(relaxed = true), // [zCODE] P3
         )
         val character = mockk<CharacterEntity>(relaxed = true)
         every { character.uuid } returns "char-1"
