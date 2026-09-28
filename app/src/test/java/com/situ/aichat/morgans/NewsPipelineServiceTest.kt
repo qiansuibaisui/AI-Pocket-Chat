@@ -12,6 +12,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -136,5 +137,50 @@ class NewsPipelineServiceTest {
         val detailedLoc = "香波地码头"
         val summaryLoc = "香波地"
         assertTrue(summaryLoc.length < detailedLoc.length)
+    }
+
+    // ── 金样 2·中继 2：延迟三态（同团短延迟/跨团长延迟/无风带不注入） ──
+
+    @Test fun delay_three_states() {
+        // 同团（不同船）→ 短延迟 6h + 详版 level 2
+        val sameFleet = service.calculateDeliveryPlan("wb", "wb", "香波地码头")
+        assertNotNull(sameFleet)
+        assertEquals(6L * 3600_000, sameFleet!!.delayMs)
+        assertEquals(2, sameFleet.detailLevel)
+        // 同海域（岛名同）→ 短延迟 + 概述 level 1
+        val sameDomain = service.calculateDeliveryPlan(null, "wb", "香波地码头", "香波地港口")
+        assertNotNull(sameDomain)
+        assertEquals(6L * 3600_000, sameDomain!!.delayMs)
+        assertEquals(1, sameDomain.detailLevel)
+        // 跨海域/跨团 → 长延迟 24h + 模糊 level 0
+        val crossDomain = service.calculateDeliveryPlan("bb", "wb", "香波地码头", "和之国某处")
+        assertNotNull(crossDomain)
+        assertEquals(24L * 3600_000, crossDomain!!.delayMs)
+        assertEquals(0, crossDomain.detailLevel)
+        // 无风带（事件地）→ null = 不注入
+        assertNull(service.calculateDeliveryPlan("wb", "wb", "九蛇岛港口"))
+        // 无风带（目标地）→ null = 不注入
+        assertNull(service.calculateDeliveryPlan("wb", "wb", "香波地码头", "九蛇岛"))
+    }
+
+    // ── 金样 3·中继 2：t1/t2 双快照对比（同一事件两个衰减级别） ──
+
+    @Test fun decay_t1_detailed_vs_t2_vague() {
+        val event = NewsEventEntity(
+            characterUuid = "c1", characterName = "贝克曼",
+            locationKey = "香波地码头", eventSummary = "与千岁见面喝蜂蜜威士忌还聊了三艘船的事",
+        )
+        // t1（同团·短延迟后触达）= 详版
+        val t1 = service.formatNarrative(event, 2)
+        assertTrue(t1.contains("香波地码头"))
+        assertTrue(t1.contains("蜂蜜威士忌"))
+        assertTrue(t1.contains("三艘船"))
+        // t2（跨团·长延迟后触达）= 模糊
+        val t2 = service.formatNarrative(event, 0)
+        assertTrue("模糊版应有'有传闻称'", t2.contains("有传闻称"))
+        assertFalse("模糊版不应含精确地点", t2.contains("香波地码头"))
+        assertFalse("模糊版不应含具体细节", t2.contains("蜂蜜威士忌"))
+        // 信息量降级验证
+        assertTrue(t2.length < t1.length)
     }
 }

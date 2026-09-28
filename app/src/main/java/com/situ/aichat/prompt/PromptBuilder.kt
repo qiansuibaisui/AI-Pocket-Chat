@@ -325,6 +325,8 @@ object PromptBuilder {
         completedEvents: List<com.situ.aichat.data.local.entity.StoryEventLedgerEntity> = emptyList(),
         /** [zCODE] LB-1·回合内重生成防复读：本回合已输出步骤要点（regenerate 路径捕获被删旧回复段·空 = 段省略）。 */
         regenSteps: List<String> = emptyList(),
+        /** [zCODE] P3 中继 2：新闻转述层注入块（NewsPipelineService.newsInjectionFor 预格式化·null=不注入）。 */
+        newsInjection: String? = null,
     ): List<ChatMessageDto> {
         val chatMessages = mutableListOf<ChatMessageDto>()
 
@@ -417,7 +419,10 @@ object PromptBuilder {
             // [zCODE] P1·第2项 读取处1 + LB-1：剧情锚点 + 已执行事件 + 重生成防复读——常开直追加（字段过
             // AnchorInjectionBuilder 防御：40 字符截断 + 换行折叠，评审附加条件4）。三空 → buildModule 返回 ""，零改既有输出。
             val anchorBlock = AnchorInjectionBuilder.buildModule(storyAnchor, completedEvents, now.toEpochMilli(), regenSteps)
-            val finalSystem = if (anchorBlock.isEmpty()) systemPrompt else "$systemPrompt\n\n$anchorBlock"
+            // [zCODE] P3 中继 2·消费侧注入：新闻转述层（据报道+防补充红线·含 NewsPipelineService.newsInjectionFor 预格式化）
+            val combinedBlock = listOfNotNull(anchorBlock.ifEmpty { null }, newsInjection?.ifBlank { null })
+                .joinToString("\n\n")
+            val finalSystem = if (combinedBlock.isEmpty()) systemPrompt else "$systemPrompt\n\n$combinedBlock"
             chatMessages.add(ChatMessageDto(role = ROLE_SYSTEM, content = finalSystem))
         }
 

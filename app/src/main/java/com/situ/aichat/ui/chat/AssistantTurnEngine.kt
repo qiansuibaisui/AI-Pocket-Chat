@@ -131,6 +131,7 @@ internal class AssistantTurnEngine(
     private val ourDayRepository: com.situ.aichat.data.repository.OurDayRepository,
     private val meetingAppointmentStore: MeetingAppointmentStore,
     private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项：锚点中央登记读 API
+    private val newsPipeline: com.situ.aichat.morgans.NewsPipelineService, // [zCODE] P3 中继 2：新闻转述层注入
     private val errorFlow: MutableStateFlow<String?>,
     private val infoToastFlow: MutableStateFlow<String?>,
     private val isDelivering: MutableStateFlow<Boolean>,
@@ -273,6 +274,8 @@ internal class AssistantTurnEngine(
         val completedStoryEvents = runCatching {
             storyStateRepository.recentCompletedEvents(character.uuid, nowInstant.toEpochMilli() - AnchorVocabulary.AGING_MAX_AGE_MS)
         }.getOrDefault(emptyList())
+        // [zCODE] P3 中继 2·消费侧注入：该角色已触达新闻（据报道+防补充红线·fail-open 空则不注入）
+        val newsInjectionBlock = runCatching { newsPipeline.newsInjectionFor(character.uuid, nowInstant.toEpochMilli()) }.getOrNull()
         // [zCODE] LB-1/LB-3-C·防复读数据源扩展为**会面全生命周期**：线下会话未完结期间，本会话已输出的全部
         // assistant 段落要点（最近 12 条·每段 60 字）恒注入【防复读】——覆盖"回合内重生成"（被删旧输出由
         // Controller regenSteps 补充）与"重开会面开场节拍原样重演"（LB-3-C）两个窗口；ledger 无记录的会话期
@@ -406,6 +409,7 @@ internal class AssistantTurnEngine(
             storyAnchor = storyAnchorSnapshot,
             completedEvents = completedStoryEvents,
             regenSteps = mergedRegenSteps,
+            newsInjection = newsInjectionBlock,
         )
         // 批 D 上下文日志：主装配顺带收一次结构化分段（聊天管线，1:1 iOS buildMessagesWithSegments）；
         // 后续 fallback/降级重装配不再收。每次流式尝试落一条日志（source=CHAT），用本表 + 末帧 usage。

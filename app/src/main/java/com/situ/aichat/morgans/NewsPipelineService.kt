@@ -100,14 +100,73 @@ class NewsPipelineService @Inject constructor(
         val fleetKey = storyStateDao.fleetKeyOfCharacter(event.characterUuid)
         val fleetMates = fleetKey?.let { storyStateDao.membersOfFleet(it) } ?: emptyList<StoryFleetMemberEntity>()
 
-        // 同团成员（非亲历者）
+        // [zCODE] 中继 2·延迟三态+衰减精确化：
+        // 同团不同船/同海域 → 短延迟 6h + 详版(level 2)
+        // 跨海域/跨团 → 长延迟 24h + 概述(level 1)
+        // 无风带 → 新闻鸟不到·不注入
         for (mate in fleetMates) {
-            if (mate.characterUuid in participants) continue // 亲历者不走新闻管道
-            insertDelivery(event, mate.characterUuid, nowMillis + SHORT_DELAY_MS, detailLevel = 2, nowMillis = nowMillis)
+            if (mate.characterUuid in participants) continue
+            val plan = calculateDeliveryPlan(
+                targetFleetKey = fleetKey,
+                eventFleetKey = fleetKey,
+                eventLocationKey = event.locationKey,
+            )
+            if (plan == null) continue // 无风带/阻断
+            insertDelivery(event, mate.characterUuid, nowMillis + plan.delayMs, plan.detailLevel, nowMillis)
         }
-        // MVP 记日志——中继 2 扩展到跨团角色
         Log.d(TAG, "新闻扇出: event=${event.uuid.take(8)} 同团触达=${fleetMates.size - participants.size} 人")
     }
+
+    /**
+     * [zCODE] 中继 2·延迟+衰减计算（纯函数·金样 2/3）：按目标与事件的舰队/海域关系三态判定。
+     *
+     * @return null = 阻断（无风带）；非 null = DeliveryPlan(delayMs, detailLevel)
+     */
+    fun calculateDeliveryPlan(
+        targetFleetKey: String?,
+        eventFleetKey: String?,
+        eventLocationKey: String,
+        targetLocationKey: String? = null,
+    ): DeliveryPlan? {
+        // 无风带：新闻鸟不到→不注入（事件地或目标地在无风带均阻断）
+        val calmBeltDomains = listOf("九蛇岛", "亚马逊百合")
+        val eventDomain = AnchorVocabulary.normalizeIslandTop(eventLocationKey)
+        val targetDomain = targetLocationKey?.let { AnchorVocabulary.normalizeIslandTop(it) }
+        if (eventDomain in calmBeltDomains || targetDomain in calmBeltDomains) return null
+
+        return when {
+            // 同团（不同船）→ 短延迟+详版
+            targetFleetKey != null && targetFleetKey == eventFleetKey ->
+                DeliveryPlan(SHORT_DELAY_MS, detailLevel = 2)
+            // 同海域（岛名相同）→ 短延迟+概述
+            targetDomain != null && targetDomain == eventDomain ->
+                DeliveryPlan(SHORT_DELAY_MS, detailLevel = 1)
+            // 跨海域/跨团 → 长延迟+模糊
+            else -> DeliveryPlan(LONG_DELAY_MS, detailLevel = 0)
+        }
+    }
+
+    /** 延迟+衰减计算结果。 */
+    data class DeliveryPlan(val delayMs: Long, val detailLevel: Int)
+
+    /**
+     * [zCODE] 中继 2·消费侧注入（对话/朋友圈生成上下文共用）：取该角色已触达新闻、格式化为注入块。
+     * 措辞含"据报道"+防补充红线（金样 5）；空→null（不注入）。
+     */
+    suspend fun newsInjectionFor(characterUuid: String, nowMillis: Long = System.currentTimeMillis()): String? =
+        withContext(Dispatchers.IO) {
+            val deliveries = dao.deliveredTo(characterUuid, nowMillis, limit = 3)
+            if (deliveries.isEmpty()) return@withContext null
+            val lines = deliveries.mapNotNull { d ->
+                dao.getEvent(d.newsEventUuid)?.let { d.narrativeText.ifBlank { formatNarrative(it, d.detailLevel) } }
+            }
+            if (lines.isEmpty()) return@withContext null
+            buildString {
+                appendLine("【新闻·转述层】以下来自《世界经济学报》的报道（你不在场，只知道报道版本）：")
+                lines.forEach { appendLine(it) }
+                append("注意：你只知道上述报道内容，不得自行补充报道里没有的细节，不得以亲历口吻谈论这些事件。")
+            }
+        }
 
     /** 插入触达记录（幂等·unique index (newsEventUuid, targetCharacterUuid)）。 */
     private suspend fun insertDelivery(
