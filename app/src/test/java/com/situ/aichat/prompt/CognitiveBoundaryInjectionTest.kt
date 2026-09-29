@@ -55,4 +55,13 @@ class CognitiveBoundaryInjectionTest {
         assertFalse("不得残留全角闭括号 ｝", CognitiveBoundaryInjection.BLOCK.contains("｝"))
         assertTrue("半角 {{user}} 必须存在", CognitiveBoundaryInjection.BLOCK.contains("{{user}}"))
     }
+    // ── A2：prompt 层宏断言（实际用户名非字面）──
+    @Test fun prompt_layer_macro_resolved_to_actual_username() {
+        val macros = mapOf("{{user}}" to "阿丽娅", "{{char}}" to "贝克曼")
+        val resolved = com.situ.aichat.prompt.PromptBuilder.applyPromptMacros(
+            CognitiveBoundaryInjection.BLOCK, macros,
+        )
+        org.junit.Assert.assertTrue("解析后应含实际用户名", resolved.contains("阿丽娅"))
+        org.junit.Assert.assertFalse("解析后不应含字面{{user}}", resolved.contains("{{user}}"))
+    }
 }

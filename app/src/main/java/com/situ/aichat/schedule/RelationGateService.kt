@@ -17,7 +17,11 @@ import com.situ.aichat.data.local.dao.StoryStateDao
  * A6 闸门：共同活动条目须有演出链（ledger/news 任一）→ 无来源拒该条目。
  * 核心口径：拦"未演出"不拦"未登记"——已演出未登记的关系放行。
  */
-class RelationGateService(
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class RelationGateService @Inject constructor(
     private val storyStateDao: StoryStateDao,
     private val newsDao: NewsPipelineDao,
 ) {

@@ -273,7 +273,19 @@ internal class AssistantTurnEngine(
         val storyAnchorSnapshot = runCatching { storyStateRepository.currentAnchorFor(character.uuid) }.getOrNull()
         val completedStoryEvents = runCatching {
             storyStateRepository.recentCompletedEvents(character.uuid, nowInstant.toEpochMilli() - AnchorVocabulary.AGING_MAX_AGE_MS)
-        }.getOrDefault(emptyList())
+        }.getOrDefault(emptyList()) +
+            // [zCODE] P4·A7：news deliveries 并入已完成事件清单（经报道触达=已演出·对当事人为亲历/对外为转述层）
+            runCatching {
+                newsPipeline.deliveriesFor(character.uuid, nowInstant.toEpochMilli()).map { d ->
+                    com.situ.aichat.data.local.entity.StoryEventLedgerEntity(
+                        characterUuid = character.uuid,
+                        eventKey = "news-${d.newsEventUuid}",
+                        description = d.narrativeText.ifBlank { "（据报道已发生的事件）" },
+                        completedAt = d.deliveredAt,
+                        sourceRaw = "news_reported",
+                    )
+                }
+            }.getOrDefault(emptyList())
         // [zCODE] P3 中继 2·消费侧注入：该角色已触达新闻（据报道+防补充红线·fail-open 空则不注入）
         val newsInjectionBlock = runCatching { newsPipeline.newsInjectionFor(character.uuid, nowInstant.toEpochMilli()) }.getOrNull()
         // [zCODE] LB-1/LB-3-C·防复读数据源扩展为**会面全生命周期**：线下会话未完结期间，本会话已输出的全部

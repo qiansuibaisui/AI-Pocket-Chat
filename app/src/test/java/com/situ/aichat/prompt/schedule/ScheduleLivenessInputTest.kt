@@ -42,7 +42,7 @@ class ScheduleLivenessInputTest {
     fun setUp() {
         db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java)
             .allowMainThreadQueries().build()
-        genService = ScheduleGenerationService(mockk<ContextLogService>(), db.scheduleDao())
+        genService = ScheduleGenerationService(mockk<ContextLogService>(), db.scheduleDao(), io.mockk.mockk(relaxed = true)) // [zCODE] P4 relationGate
     }
 
     @After

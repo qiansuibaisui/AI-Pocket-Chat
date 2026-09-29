@@ -46,7 +46,7 @@ class ScheduleWorldInputTest {
         db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java)
             .allowMainThreadQueries().build()
         contextLog = mockk()
-        genService = ScheduleGenerationService(contextLog, db.scheduleDao())
+        genService = ScheduleGenerationService(contextLog, db.scheduleDao(), io.mockk.mockk(relaxed = true)) // [zCODE] P4
         val travel = WorldTravelService(db.worldDao(), db.characterDao(), mockk(relaxed = true), db, mockk(relaxed = true), mockk(relaxed = true))
         stageService = WorldStageService(
             db.characterDao(), db.scheduleDao(), db.worldNativeDao(), db.petDao(), db.worldDao(), travel,

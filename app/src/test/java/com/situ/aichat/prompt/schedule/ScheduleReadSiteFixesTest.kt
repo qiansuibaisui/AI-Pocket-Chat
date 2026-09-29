@@ -66,7 +66,7 @@ class ScheduleReadSiteFixesTest {
     )
 
     @Test fun phantom_meeting_rule_always_present_in_prompt() {
-        val service = com.situ.aichat.prompt.schedule.ScheduleGenerationService(io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true))
+        val service = com.situ.aichat.prompt.schedule.ScheduleGenerationService(io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true)) // [zCODE] P4
         val character = com.situ.aichat.data.local.entity.CharacterEntity(
             uuid = "c1", name = "小南", creationDate = 0L,
         )
@@ -82,7 +82,7 @@ class ScheduleReadSiteFixesTest {
     }
 
     @Test fun sailing_anchor_hard_constraint_and_fail_open() {
-        val service = com.situ.aichat.prompt.schedule.ScheduleGenerationService(io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true))
+        val service = com.situ.aichat.prompt.schedule.ScheduleGenerationService(io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true)) // [zCODE] P4
         val character = com.situ.aichat.data.local.entity.CharacterEntity(uuid = "c1", name = "小南", creationDate = 0L)
         fun req(anchor: com.situ.aichat.data.local.entity.StoryAnchorSnapshotEntity?, fresh: Boolean) =
             com.situ.aichat.prompt.schedule.ScheduleGenerationRequest(

@@ -71,6 +71,7 @@ sealed class ScheduleGenerationException(message: String) : Exception(message) {
 class ScheduleGenerationService @Inject constructor(
     private val contextLog: ContextLogService,
     private val scheduleDao: ScheduleDao,
+    private val relationGate: com.situ.aichat.schedule.RelationGateService, // [zCODE] P4·A5/A6 闸门
 ) {
 
     /**
@@ -158,8 +159,11 @@ class ScheduleGenerationService @Inject constructor(
                 sortOrder = index,
             )
         }
-        scheduleDao.insertScheduleWithEvents(schedule, events)
-        Log.d(TAG, "日程已生成入库: ${request.character.name} 事件数=${events.size} backfill=${request.isBackfill}")
+        // [zCODE] P4·A5/A6 闸门脚手架：RelationGateService 已注入·管线就绪；
+        // 实际过滤需名→UUID 解析（relatedCharacterNames 是角色名非 uuid）——下窗口实现。
+        val gatedEvents = events
+        scheduleDao.insertScheduleWithEvents(schedule, gatedEvents)
+        Log.d(TAG, "日程已生成入库: ${request.character.name} 事件数=${gatedEvents.size} backfill=${request.isBackfill}")
         return true
     }
 
