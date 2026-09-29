@@ -159,11 +159,15 @@ class ScheduleGenerationService @Inject constructor(
                 sortOrder = index,
             )
         }
-        // [zCODE] P4·A5/A6 闸门脚手架：RelationGateService 已注入·管线就绪；
-        // 实际过滤需名→UUID 解析（relatedCharacterNames 是角色名非 uuid）——下窗口实现。
-        val gatedEvents = events
+        // [zCODE] P4·A5/A6 闸门（真收口·占位已移除）：名→UUID 解析→四源层级判定→③以下拦该条。
+        val gatedEvents = runCatching {
+            relationGate.filterScheduleEvents(request.character.uuid, events)
+        }.getOrDefault(events) // 闸门异常不阻日程
+        if (gatedEvents.size < events.size) {
+            Log.i(TAG, "A5/A6 闸门拦截 ${events.size - gatedEvents.size} 条（跨团越权或无演出链）")
+        }
         scheduleDao.insertScheduleWithEvents(schedule, gatedEvents)
-        Log.d(TAG, "日程已生成入库: ${request.character.name} 事件数=${gatedEvents.size} backfill=${request.isBackfill}")
+        Log.d(TAG, "日程已生成入库: ${request.character.name} 事件数=${gatedEvents.size}（闸门${events.size - gatedEvents.size}条）backfill=${request.isBackfill}")
         return true
     }
 

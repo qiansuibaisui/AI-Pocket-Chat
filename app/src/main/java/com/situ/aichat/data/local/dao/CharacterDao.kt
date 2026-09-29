@@ -19,6 +19,10 @@ interface CharacterDao {
     @Query("SELECT * FROM characters WHERE uuid = :uuid")
     suspend fun getByUuid(uuid: String): CharacterEntity?
 
+    /** [zCODE] P4·A5 名→UUID：按角色名精确查（闸门过滤用·名字可能带「」引号已在调用侧剥）。 */
+    @Query("SELECT * FROM characters WHERE name = :name LIMIT 1")
+    suspend fun getByName(name: String): CharacterEntity?
+
     @Query("SELECT * FROM characters ORDER BY creationDate DESC")
     suspend fun getAll(): List<CharacterEntity>
 

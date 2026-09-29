@@ -9,6 +9,7 @@ import com.situ.aichat.data.local.entity.StoryFleetMemberEntity
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -113,5 +114,57 @@ class RelationGateServiceTest {
         coEvery { storyStateDao.recentLedgerFor(any(), any()) } returns emptyList() // 无演出链
         coEvery { newsDao.deliveredTo(any(), any(), any()) } returns emptyList() // 无新闻触达
         assertFalse("样本#2：'和「千岁」擦甲板'无演出链拒生成", service.hasProvenanceForJointActivity("bella", "chitose"))
+    }
+
+    // ── 管线级样本 #1：贝克曼日程含"和「贝拉」巡视"→ 闸门过滤后不含贝拉 ──
+
+    @Test fun pipeline_sample1_beckman_schedule_with_bella_filtered() = runTest {
+        val charDao = mockk<com.situ.aichat.data.local.dao.CharacterDao>(relaxed = true)
+        val gateWithDao = RelationGateService(storyStateDao, newsDao, charDao)
+        // 贝拉角色可查到（名→UUID 解析成功）
+        val bellaChar = com.situ.aichat.data.local.entity.CharacterEntity(uuid = "bella-uuid", name = "贝拉", creationDate = 0L)
+        coEvery { charDao.getByName("贝拉") } returns bellaChar
+        // 贝克曼=白团，贝拉=罗杰团（跨团零级）
+        coEvery { storyStateDao.getRelation(any(), any()) } returns null
+        coEvery { storyStateDao.fleetKeyOfCharacter("beckman") } returns "wb"
+        coEvery { storyStateDao.fleetKeyOfCharacter("bella-uuid") } returns "roger"
+        coEvery { storyStateDao.recentLedgerFor(any(), any()) } returns emptyList()
+        coEvery { newsDao.deliveredTo(any(), any(), any()) } returns emptyList()
+
+        val events = listOf(
+            com.situ.aichat.data.local.entity.ScheduleEventEntity(
+                uuid = "e1", scheduleUuid = "s1", startTime = 0, endTime = 100,
+                activity = "和「贝拉」巡视甲板", relatedCharacterNames = "贝拉",
+            ),
+            com.situ.aichat.data.local.entity.ScheduleEventEntity(
+                uuid = "e2", scheduleUuid = "s1", startTime = 200, endTime = 300,
+                activity = "独自练刀", relatedCharacterNames = null, // 纯个人条目
+            ),
+        )
+        val filtered = gateWithDao.filterScheduleEvents("beckman", events)
+        assertEquals("纯个人条目保留", 1, filtered.size)
+        assertEquals("独自练刀", filtered[0].activity) // '和「贝拉」巡视'被拦截
+    }
+
+    // ── 管线级样本 #2：贝拉日程含"和「千岁」擦甲板"无演出链→ 拦截 ──
+
+    @Test fun pipeline_sample2_bella_schedule_with_chitose_filtered() = runTest {
+        val charDao = mockk<com.situ.aichat.data.local.dao.CharacterDao>(relaxed = true)
+        val gateWithDao = RelationGateService(storyStateDao, newsDao, charDao)
+        val chitoseChar = com.situ.aichat.data.local.entity.CharacterEntity(uuid = "chitose-uuid", name = "千岁", creationDate = 0L)
+        coEvery { charDao.getByName("千岁") } returns chitoseChar
+        coEvery { storyStateDao.getRelation(any(), any()) } returns null
+        coEvery { storyStateDao.fleetKeyOfCharacter(any()) } returns null // 不同团
+        coEvery { storyStateDao.recentLedgerFor(any(), any()) } returns emptyList() // 无演出链
+        coEvery { newsDao.deliveredTo(any(), any(), any()) } returns emptyList() // 无报道
+
+        val events = listOf(
+            com.situ.aichat.data.local.entity.ScheduleEventEntity(
+                uuid = "e1", scheduleUuid = "s1", startTime = 0, endTime = 100,
+                activity = "和「千岁」擦甲板", relatedCharacterNames = "千岁",
+            ),
+        )
+        val filtered = gateWithDao.filterScheduleEvents("bella", events)
+        assertEquals("无演出链共同活动条目被拦截", 0, filtered.size)
     }
 }

@@ -24,8 +24,28 @@ import javax.inject.Singleton
 class RelationGateService @Inject constructor(
     private val storyStateDao: StoryStateDao,
     private val newsDao: NewsPipelineDao,
+    private val characterDao: com.situ.aichat.data.local.dao.CharacterDao? = null, // [zCODE] A组真收口：名→UUID（可选·测试兼容）
 ) {
     enum class Level { STRANGER, AWARE_ONEWAY, AWARE_MUTUAL, ACQUAINTED, OLD_FRIEND, FLEET_MATE }
+
+    /**
+     * [zCODE] A组真收口：管线级过滤——生成后按 relatedCharacterNames 过滤条目。
+     * 名→UUID 解析 → 四源层级判定 → ③以下拦截该条（拦条不杀批）。
+     * 无 DAO（测试场景）或无关联角色 = 放行（fail-open）。
+     */
+    suspend fun filterScheduleEvents(ownerUuid: String, events: List<com.situ.aichat.data.local.entity.ScheduleEventEntity>): List<com.situ.aichat.data.local.entity.ScheduleEventEntity> {
+        val dao = characterDao ?: return events // 测试兼容：无 DAO 不过滤
+        return events.filter { e ->
+            val names = e.relatedCharacterNames ?: return@filter true
+            val nameList = names.split("，", "、", ",", "「", "」").map { it.trim() }.filter { it.isNotEmpty() && it != "和" }
+            if (nameList.isEmpty()) return@filter true
+            nameList.all { name ->
+                val target = runCatching { dao.getByName(name) }.getOrNull()
+                if (target == null) return@all true // 名字查不到=可能非角色（用户名/地名）→ 放行
+                runCatching { canAppearInSchedule(ownerUuid, target.uuid) }.getOrDefault(true) // 闸门异常不阻日程
+            }
+        }
+    }
 
     /** 判定 a→b 的关系层级。优先级：手动登记 > ①同团 > ③已演出 > ②报道触达 > 零级。 */
     suspend fun levelBetween(aUuid: String, bUuid: String): Level {
