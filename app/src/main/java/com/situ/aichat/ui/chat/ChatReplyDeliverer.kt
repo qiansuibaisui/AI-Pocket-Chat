@@ -306,12 +306,14 @@ internal class ChatReplyDeliverer(
                     ),
                 )
             }
-            // [zCODE] P1·第3项：船团广播（world_sync 扇出+防环+个体冲突不覆盖——见 StoryStateRepository.broadcastToFleetMates）。
-            // 仅**有新锚点块**的回合广播（carryover 无新信息不扇出）；失败仅日志不影响投递。
-            if (saved != null && effectiveAnchor != null) {
-                runCatching { storyStateRepository.broadcastToFleetMates(saved) }
-                    .onFailure { Log.w(TAG, "船团广播失败（不影响投递）: ${it.message}") }
-            }
+            // [zCODE] P2修补·传播边界：个人层锚点更新**不广播**给同团——广播仅限全团级事件（导演/P4·
+            // 手动全团修正/P3 管理台）。原 P1·第3项设计把个人锚点也扇出，导致 Beckman 个人移到甲板→
+            // 全团锚点被刷成"甲板"（佩罗娜实际在寝室）——金样① A更新→B不变。
+            // 广播入口保留在 StoryStateRepository.broadcastToFleetMates，由全团级事件调用方触发。
+            // if (saved != null && effectiveAnchor != null) {
+            //     runCatching { storyStateRepository.broadcastToFleetMates(saved) }
+            //         .onFailure { Log.w(TAG, "船团广播失败（不影响投递）: ${it.message}") }
+            // }
         }.onFailure { Log.w(TAG, "锚点落库失败（不影响投递）: ${it.message}") }
     }
 

@@ -379,12 +379,30 @@ class CharacterProfileViewModel @Inject constructor(
         if (anchor != null &&
             com.situ.aichat.prompt.AnchorVocabulary.freshnessOf(anchor.effectiveAt, now) != com.situ.aichat.prompt.AnchorVocabulary.FreshnessLevel.STALE
         ) {
+            // [zCODE] P2修补·自愈回落：锚点与当前日程**冲突**且锚点超过 6h 无本人互动更新（capturedAt 距今>6h）
+            // → 回落日程派生（防"锚点优先焊死"——贝拉案例：锚点停在旧位置但角色实际按日程行动）。
+            // 艾斯案例（自愈成功）区分：艾斯锚点由本人对话实时更新（capturedAt 距今<6h）→ 走锚点。
+            val anchorAgeH = (now - anchor.capturedAt) / 3_600_000L
+            val conflictsWithSchedule = fallbackEvent?.let { fe ->
+                val anchorMotion = com.situ.aichat.prompt.AnchorVocabulary.MotionState.fromRaw(anchor.motionStateRaw)
+                val scheduleIsIndoors = fe.activity.contains("睡") || fe.activity.contains("寝室") || fe.activity.contains("家")
+                val anchorIsOutdoor = anchorMotion == com.situ.aichat.prompt.AnchorVocabulary.MotionState.SAILING ||
+                    anchorMotion == com.situ.aichat.prompt.AnchorVocabulary.MotionState.ASHORE
+                anchorIsOutdoor && scheduleIsIndoors
+            } ?: false
+            if (conflictsWithSchedule && anchorAgeH > SELF_HEAL_THRESHOLD_H) {
+                val fallback = fallbackEvent.activity.takeIf { it.isNotBlank() } ?: return null
+                return AnchorStatusLine("行程显示：$fallback（计划，非实时位置）", fromAnchor = false)
+            }
             val detail = listOf(anchor.eventName, anchor.locationRaw).filter { it.isNotBlank() }.joinToString("·")
             return AnchorStatusLine("当前：$detail", fromAnchor = true)
         }
         val fallback = fallbackEvent?.activity?.takeIf { it.isNotBlank() } ?: return null
         return AnchorStatusLine("行程显示：$fallback（计划，非实时位置）", fromAnchor = false)
     }
+
+    // [zCODE] P2修补：自愈回落阈值——锚点超此时长无本人更新且与日程冲突→回落（内联常量避免 companion 冲突）。
+    private val SELF_HEAL_THRESHOLD_H = 6L
 
     /** 日程卡「生成失败→重试」：仅重生本角色今日（1:1 iOS manualRetry）；成功后 Room Flow 自动刷新卡片。 */
     fun retrySchedule() {
