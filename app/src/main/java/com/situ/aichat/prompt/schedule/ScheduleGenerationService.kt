@@ -239,6 +239,8 @@ class ScheduleGenerationService @Inject constructor(
         sections.add("")
         sections.add("【剧情位置约束】")
         sections.add("聊天里只是随口提过的活动或地点，不构成约定——除非存在已确认的见面约定，否则不要把它们写进今天的日程。")
+        // [zCODE] P4·A1：认知边界六.2 措辞（"无靠港记录不得出现陆地场景，跨船团会面须双方锚点同海域/同港/同岛"）
+        sections.add("无靠港记录不得出现陆地场景，跨船团会面须双方锚点同海域/同港/同岛。")
         val anchorState = request.anchor
             ?.takeIf { request.anchorFresh }
             ?.let { com.situ.aichat.prompt.AnchorVocabulary.MotionState.fromRaw(it.motionStateRaw) }

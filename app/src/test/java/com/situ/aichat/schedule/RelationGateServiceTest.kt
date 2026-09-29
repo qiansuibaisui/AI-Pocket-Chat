@@ -26,6 +26,7 @@ class RelationGateServiceTest {
 
     // ── ① 队友：同团放行 ──
     @Test fun fleet_mate_same_fleet_passes() = runTest {
+        coEvery { storyStateDao.getRelation(any(), any()) } returns null // [zCODE] relaxed mock 防假对象
         coEvery { storyStateDao.fleetKeyOfCharacter("beckman") } returns "wb"
         coEvery { storyStateDao.fleetKeyOfCharacter("bella") } returns "wb"
         assertTrue(service.canAppearInSchedule("beckman", "bella"))
@@ -41,6 +42,7 @@ class RelationGateServiceTest {
 
     // ── ③ 新识：ledger 有共同事件放行 ──
     @Test fun acquainted_ledger_event_passes() = runTest {
+        coEvery { storyStateDao.getRelation(any(), any()) } returns null // relaxed mock 可能造出非 null 假对象
         coEvery { storyStateDao.fleetKeyOfCharacter(any()) } returns null
         coEvery { storyStateDao.recentLedgerFor("bella", any()) } returns listOf(
             ledger("bella", "joint-chitose-cleanup", "与千岁在甲板擦船")
@@ -51,6 +53,7 @@ class RelationGateServiceTest {
 
     // ── 核心正例：已演出未登记放行 ──
     @Test fun performed_but_unregistered_passes() = runTest {
+        coEvery { storyStateDao.getRelation(any(), any()) } returns null // 同上
         // ledger 有事件（已演出），但角色卡无跨团关系登记（不存在该列）→ 放行
         coEvery { storyStateDao.fleetKeyOfCharacter(any()) } returns null
         coEvery { storyStateDao.recentLedgerFor("bella", any()) } returns listOf(
@@ -78,6 +81,30 @@ class RelationGateServiceTest {
         coEvery { storyStateDao.recentLedgerFor(any(), any()) } returns emptyList() // 无演出
         coEvery { newsDao.deliveredTo(any(), any(), any()) } returns emptyList() // 无报道
         assertFalse("样本#1：跨团零级'和「贝拉」巡视'拦截", service.canAppearInSchedule("beckman", "bella"))
+    }
+
+    // ── ②双向：仅低频互动类放行（A5 闸门仍拦截共同活动条目）──
+    @Test fun aware_mutual_blocked_for_schedule_too() = runTest {
+        coEvery { storyStateDao.fleetKeyOfCharacter(any()) } returns null
+        coEvery { storyStateDao.recentLedgerFor(any(), any()) } returns emptyList()
+        val dA = NewsDeliveryEntity(newsEventUuid = "e1", targetCharacterUuid = "a")
+        val dB = NewsDeliveryEntity(newsEventUuid = "e2", targetCharacterUuid = "b")
+        coEvery { newsDao.deliveredTo("a", any(), any()) } returns listOf(dA)
+        coEvery { newsDao.getEvent("e1") } returns NewsEventEntity(characterUuid = "b")
+        coEvery { newsDao.deliveredTo("b", any(), any()) } returns listOf(dB)
+        coEvery { newsDao.getEvent("e2") } returns NewsEventEntity(characterUuid = "a")
+        assertFalse("②双向仍不可共同活动条目", service.canAppearInSchedule("a", "b"))
+    }
+
+    // ── 手动登记④旧识：直接放行（第四源·最高优先）──
+    @Test fun manual_old_friend_registration_passes() = runTest {
+        coEvery { storyStateDao.getRelation("garp", "sengoku") } returns com.situ.aichat.data.local.entity.CharacterRelationEntity(
+            fromUuid = "garp", toUuid = "sengoku", level = "old_friend", source = "原著既定",
+        )
+        coEvery { storyStateDao.fleetKeyOfCharacter(any()) } returns null // 不同团
+        coEvery { storyStateDao.recentLedgerFor(any(), any()) } returns emptyList() // 无演出记录
+        coEvery { newsDao.deliveredTo(any(), any(), any()) } returns emptyList() // 无报道
+        assertTrue("手动登记④旧识直接放行（先天误拦解除）", service.canAppearInSchedule("garp", "sengoku"))
     }
 
     // ── 样本 #2 端到端：贝拉×千岁·无演出链·拒生成 ──

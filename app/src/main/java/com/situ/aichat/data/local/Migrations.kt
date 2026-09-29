@@ -787,6 +787,17 @@ val MIGRATION_51_52 = object : Migration(51, 52) {
     }
 }
 
+/** [zCODE] P4·A5 手动关系登记表 v52→v53。 */
+val MIGRATION_52_53 = object : Migration(52, 53) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `character_relations` (`uuid` TEXT NOT NULL, `fromUuid` TEXT NOT NULL, " +
+                "`toUuid` TEXT NOT NULL, `level` TEXT NOT NULL, `source` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`uuid`))",
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_character_relations_fromUuid_toUuid` ON `character_relations` (`fromUuid`, `toUuid`)")
+    }
+}
+
 /** 全部迁移（按序），注入 Room.databaseBuilder().addMigrations(*ALL_MIGRATIONS)。 */
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,

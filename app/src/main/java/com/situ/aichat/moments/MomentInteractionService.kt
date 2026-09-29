@@ -583,13 +583,18 @@ class MomentInteractionService @Inject constructor(
         val maxAge = com.situ.aichat.prompt.AnchorVocabulary.AGING_MAX_AGE_MS
         val a = runCatching { storyStateRepository.freshAnchorFor(uuidA, maxAgeMs = maxAge, nowMillis = nowMillis) }.getOrNull() ?: return false
         val b = runCatching { storyStateRepository.freshAnchorFor(uuidB, maxAgeMs = maxAge, nowMillis = nowMillis) }.getOrNull() ?: return false
+        // [zCODE] P4·A3：扩至任意 MotionState 不一致（docked/ashore 对也算——比 P2 的仅海陆对更严）
+        // 同海（sailing/sailing）与同陆（ashore/ashore、indoors/indoors、ashore/indoors）放行
         val sa = com.situ.aichat.prompt.AnchorVocabulary.MotionState.fromRaw(a.motionStateRaw)
         val sb = com.situ.aichat.prompt.AnchorVocabulary.MotionState.fromRaw(b.motionStateRaw)
+        val onSea = { s: com.situ.aichat.prompt.AnchorVocabulary.MotionState -> s == com.situ.aichat.prompt.AnchorVocabulary.MotionState.SAILING }
         val onLand = { s: com.situ.aichat.prompt.AnchorVocabulary.MotionState ->
             s == com.situ.aichat.prompt.AnchorVocabulary.MotionState.ASHORE || s == com.situ.aichat.prompt.AnchorVocabulary.MotionState.INDOORS
         }
-        return (sa == com.situ.aichat.prompt.AnchorVocabulary.MotionState.SAILING && onLand(sb)) ||
-            (sb == com.situ.aichat.prompt.AnchorVocabulary.MotionState.SAILING && onLand(sa))
+        // 海↔陆 = 不一致；docked↔非docked 也算不一致（停泊≠航行/上岸）
+        return (onSea(sa) && onLand(sb)) || (onLand(sa) && onSea(sb)) ||
+            (sa == com.situ.aichat.prompt.AnchorVocabulary.MotionState.DOCKED && sb != com.situ.aichat.prompt.AnchorVocabulary.MotionState.DOCKED) ||
+            (sb == com.situ.aichat.prompt.AnchorVocabulary.MotionState.DOCKED && sa != com.situ.aichat.prompt.AnchorVocabulary.MotionState.DOCKED)
     }
 
     /**

@@ -23,9 +23,19 @@ class RelationGateService(
 ) {
     enum class Level { STRANGER, AWARE_ONEWAY, AWARE_MUTUAL, ACQUAINTED, OLD_FRIEND, FLEET_MATE }
 
-    /** 判定 a→b 的关系层级（单向视角——②区分单双向）。 */
+    /** 判定 a→b 的关系层级。优先级：手动登记 > ①同团 > ③已演出 > ②报道触达 > 零级。 */
     suspend fun levelBetween(aUuid: String, bUuid: String): Level {
         val now = System.currentTimeMillis()
+        // [zCODE] 手动登记（第四源·最高优先——正本五.2 登记制度·用户指定层级直接生效）
+        val manual = storyStateDao.getRelation(aUuid, bUuid) ?: storyStateDao.getRelation(bUuid, aUuid)
+        if (manual != null) {
+            return when (manual.level) {
+                "old_friend" -> Level.OLD_FRIEND
+                "acquainted" -> Level.ACQUAINTED
+                "aware" -> Level.AWARE_MUTUAL
+                else -> Level.STRANGER
+            }
+        }
         // ① 同团
         val fleetA = storyStateDao.fleetKeyOfCharacter(aUuid)
         val fleetB = storyStateDao.fleetKeyOfCharacter(bUuid)

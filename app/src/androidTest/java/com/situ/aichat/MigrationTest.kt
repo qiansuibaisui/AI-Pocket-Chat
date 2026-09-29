@@ -39,6 +39,7 @@ import com.situ.aichat.data.local.MIGRATION_48_49
 import com.situ.aichat.data.local.MIGRATION_49_50
 import com.situ.aichat.data.local.MIGRATION_50_51
 import com.situ.aichat.data.local.MIGRATION_51_52
+import com.situ.aichat.data.local.MIGRATION_52_53
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -1440,6 +1441,6 @@ class MigrationTest {
          * 逐版本循环校验的上界。**升 DB 版本时必须同步升此常量**，否则新步静默无覆盖
          * （2026-07-16 四小件：此值曾 stale 在 31、DB 已 37，v31→v37 六步循环零覆盖——本卷一并清账到 38）。
          */
-        const val LATEST_VERSION = 52 // [zCODE] P1·第2项 锚点中央登记（story_anchor_snapshots + story_event_ledger）
+        const val LATEST_VERSION = 53 // [zCODE] P1·第2项 锚点中央登记（story_anchor_snapshots + story_event_ledger）
     }
 }

@@ -104,4 +104,15 @@ interface StoryStateDao {
     /** [zCODE] P2·建团 UI：现有全部团键（分组选择器数据源·去重升序）。 */
     @Query("SELECT DISTINCT fleetKey FROM story_fleet_members ORDER BY fleetKey ASC")
     suspend fun allFleetKeys(): List<String>
+
+    // ── [zCODE] P4·A5 手动关系登记 ──
+
+    @Query("SELECT * FROM character_relations WHERE fromUuid = :fromUuid AND toUuid = :toUuid LIMIT 1")
+    suspend fun getRelation(fromUuid: String, toUuid: String): com.situ.aichat.data.local.entity.CharacterRelationEntity?
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    suspend fun upsertRelation(relation: com.situ.aichat.data.local.entity.CharacterRelationEntity)
+
+    @Query("DELETE FROM character_relations WHERE fromUuid = :characterUuid OR toUuid = :characterUuid")
+    suspend fun deleteRelationsFor(characterUuid: String)
 }

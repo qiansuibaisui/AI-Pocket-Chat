@@ -164,8 +164,10 @@ import com.situ.aichat.data.local.entity.WorldUserResidentEntity
         // [zCODE] P3·摩根斯新闻管道：新闻事件条目（不可变）+ 触达记录（认知矩阵"转述层"行·唯一索引幂等）。
         com.situ.aichat.data.local.entity.NewsEventEntity::class,
         com.situ.aichat.data.local.entity.NewsDeliveryEntity::class,
+        // [zCODE] P4·A5 手动关系登记（正本五.2 落点·优先于三表派生）。
+        com.situ.aichat.data.local.entity.CharacterRelationEntity::class,
     ],
-    version = 52,
+    version = 53,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
