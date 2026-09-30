@@ -390,7 +390,9 @@ class CharacterProfileViewModel @Inject constructor(
                     anchorMotion == com.situ.aichat.prompt.AnchorVocabulary.MotionState.ASHORE
                 anchorIsOutdoor && scheduleIsIndoors
             } ?: false
-            if (conflictsWithSchedule && anchorAgeH > SELF_HEAL_THRESHOLD_H) {
+            // [zCODE] B组#2：world_sync 广播锚点跳过 6h 等待——非本人观察（系统拷贝），冲突即失据
+            val isBroadcastAnchor = anchor.sourceRaw == com.situ.aichat.data.local.entity.AnchorSource.WORLD_SYNC.raw
+            if (conflictsWithSchedule && (anchorAgeH > SELF_HEAL_THRESHOLD_H || isBroadcastAnchor)) {
                 val fallback = fallbackEvent.activity.takeIf { it.isNotBlank() } ?: return null
                 return AnchorStatusLine("行程显示：$fallback（计划，非实时位置）", fromAnchor = false)
             }
