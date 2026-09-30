@@ -40,6 +40,7 @@ import com.situ.aichat.data.local.MIGRATION_49_50
 import com.situ.aichat.data.local.MIGRATION_50_51
 import com.situ.aichat.data.local.MIGRATION_51_52
 import com.situ.aichat.data.local.MIGRATION_52_53
+import com.situ.aichat.data.local.MIGRATION_53_54
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -1434,6 +1435,46 @@ class MigrationTest {
         }
     }
 
+    /**
+     * [zCODE] 工单#1·锚点双层格式 v53→v54：v53 插一条存量锚点行 → 迁到 v54 →
+     * ①旧行一字不丢；②新列 `fleetLayerJson` 对存量行回填空串（= 存量单层/无团·不回填口径）；
+     * ③新列可写（双层格式落库通道）。
+     */
+    @Test
+    fun migration53To54AddsFleetLayerJsonAndPreservesRows() {
+        helper.createDatabase(TEST_DB, 53).apply {
+            execSQL(
+                "INSERT INTO story_anchor_snapshots (" +
+                    "uuid, characterUuid, conversationUuid, eventName, locationRaw, locationKey, motionStateRaw, " +
+                    "sourceRaw, effectiveAt, capturedAt, relatedMessageUUID, fleetKey, presentListJson" +
+                    ") VALUES (" +
+                    "'anchor-1', 'char-1', 'conv-1', '守夜', '甲板·白团海上旗舰', '甲板', 'sailing', " +
+                    "'dialog_block', 1756800000000, 1756800000000, 'msg-1', 'wb', ''" +
+                    ")",
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(TEST_DB, 54, true, MIGRATION_53_54).use { db ->
+            db.query(
+                "SELECT eventName, locationRaw, motionStateRaw, fleetLayerJson FROM story_anchor_snapshots WHERE uuid = 'anchor-1'",
+            ).use { c ->
+                assertTrue("存量锚点行必须还在", c.moveToFirst())
+                assertEquals("守夜", c.getString(0))
+                assertEquals("甲板·白团海上旗舰", c.getString(1)) // LB-4 整值不动
+                assertEquals("sailing", c.getString(2))
+                assertEquals("新列 fleetLayerJson 对存量行回填空串", "", c.getString(3))
+            }
+            db.execSQL(
+                "UPDATE story_anchor_snapshots SET fleetLayerJson = '{\"fleetName\":\"白胡子海贼团\"}' WHERE uuid = 'anchor-1'",
+            )
+            db.query("SELECT fleetLayerJson FROM story_anchor_snapshots WHERE uuid = 'anchor-1'").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("{\"fleetName\":\"白胡子海贼团\"}", c.getString(0))
+            }
+        }
+    }
+
     private companion object {
         const val TEST_DB = "migration-test.db"
 
@@ -1441,6 +1482,6 @@ class MigrationTest {
          * 逐版本循环校验的上界。**升 DB 版本时必须同步升此常量**，否则新步静默无覆盖
          * （2026-07-16 四小件：此值曾 stale 在 31、DB 已 37，v31→v37 六步循环零覆盖——本卷一并清账到 38）。
          */
-        const val LATEST_VERSION = 53 // [zCODE] P1·第2项 锚点中央登记（story_anchor_snapshots + story_event_ledger）
+        const val LATEST_VERSION = 54 // [zCODE] 工单#1：锚点双层格式（story_anchor_snapshots.fleetLayerJson）
     }
 }

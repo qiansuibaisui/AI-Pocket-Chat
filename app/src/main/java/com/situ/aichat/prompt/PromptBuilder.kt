@@ -426,6 +426,8 @@ object PromptBuilder {
                 applyPromptMacros(CognitiveBoundaryInjection.BLOCK, alwaysMacros), // [zCODE] P4：宏解析（主宏映射·非 worldMacros——后者无世界书时为空）
                 applyPromptMacros(FosterDaughterEntry.BLOCK, alwaysMacros), // [zCODE] P4：养女条目（同款）
                 anchorBlock.ifEmpty { null },
+                // [zCODE] 工单#1：锚点双层格式指导（恒注入——认知边界六.2 为正本红线不改写，格式示例落此段·只增段）
+                applyPromptMacros(AnchorInjectionBuilder.ANCHOR_OUTPUT_GUIDE, alwaysMacros),
                 newsInjection?.ifBlank { null },
             ).joinToString("\n\n")
             val finalSystem = if (combinedBlock.isEmpty()) systemPrompt else "$systemPrompt\n\n$combinedBlock"

@@ -798,6 +798,17 @@ val MIGRATION_52_53 = object : Migration(52, 53) {
     }
 }
 
+/**
+ * [zCODE] 工单#1：锚点格式双层规范化 v53→v54——`story_anchor_snapshots` 加 `fleetLayerJson`
+ * （全团层 JSON：团名/海域/港口/船名/MotionState·空=存量单层/无团，历史行不回填）。
+ * 写法与 MIGRATION_50_51 的 fleetKey/presentListJson 同款（TEXT NOT NULL DEFAULT ''）。
+ */
+val MIGRATION_53_54 = object : Migration(53, 54) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `story_anchor_snapshots` ADD COLUMN `fleetLayerJson` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 /** 全部迁移（按序），注入 Room.databaseBuilder().addMigrations(*ALL_MIGRATIONS)。 */
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
@@ -852,4 +863,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_50_51,
     MIGRATION_51_52,
     MIGRATION_52_53, // [zCODE] ZD-9 根因修复：定义存在但漏注册到数组→v52→v53 找不到迁移→秒崩
+    MIGRATION_53_54, // [zCODE] 工单#1：锚点全团层列（数组已追加——ZD-9 惯例：新增迁移必登记本数组）
 )

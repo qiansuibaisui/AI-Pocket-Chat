@@ -51,14 +51,50 @@ object AnchorVocabulary {
         }
     }
 
+    /** 岸上语义词表（工单#1 起独立常量——A3 一致性闸门与 KEYWORDS 共用同一出口，防两处漂移；先于 KEYWORDS 初始化）。 */
+    private val ASHORE_KEYWORDS = Regex("登陆|上岸|在岸|集市|街道|镇上|城里|酒馆|广场")
+
     /** 关键词表（顺序即优先级：先海后岸，防「港口的酒馆」被 indoors 抢判）。 */
     private val KEYWORDS: List<Pair<MotionState, Regex>> = listOf(
         MotionState.SAILING to Regex("航行|出海|在海上|海面上|甲板|船舱|桅杆"),
         MotionState.DOCKED to Regex("停泊|靠港|靠岸|下锚|泊|码头|港口"),
-        MotionState.ASHORE to Regex("登陆|上岸|在岸|集市|街道|镇上|城里|酒馆|广场"),
+        MotionState.ASHORE to ASHORE_KEYWORDS,
         MotionState.INDOORS to Regex("寝室|家中|房间里|屋内|店内|宿舍|卧舱"),
         MotionState.IN_TRANSIT to Regex("移动中|赶路|前往|路上|途中|在路上"),
     )
+
+    /** 条目文本是否含岸上语义（A3 闸门：fresh 航行中锚点 + 岸上条目 → 拦）。 */
+    fun impliesAshore(text: String): Boolean = ASHORE_KEYWORDS.containsMatchIn(text)
+
+    // ── [zCODE] 工单#1：全团层 MotionState 字段化（双层锚点 `全团：…（{船名}·{MotionState}）` 的括号段词表） ──
+
+    /** 全团层 MotionState 中文契约值：停靠/靠港/靠岸/锚泊/漂泊 → DOCKED（锚泊/漂泊由 [isSeaAreaGranularity] 细分粒度）。 */
+    private val FLEET_MOTION_DOCKED = Regex("停靠|靠港|靠岸|锚泊|漂泊|泊")
+
+    /** 航行族：航行中/航行/出海 → SAILING。 */
+    private val FLEET_MOTION_SAILING = Regex("航行中|航行|出海")
+
+    /** 全团层 MotionState 中文词 → 枚举；不识 → null（调用侧按 UNKNOWN 处理，不硬猜）。 */
+    fun fleetMotionFromText(raw: String): MotionState? {
+        val t = raw.trim()
+        if (t.isEmpty()) return null
+        return when {
+            FLEET_MOTION_SAILING.containsMatchIn(t) -> MotionState.SAILING
+            FLEET_MOTION_DOCKED.containsMatchIn(t) -> MotionState.DOCKED
+            else -> null
+        }
+    }
+
+    /** 海域级粒度港口位占位（锚点格式契约："新世界·某海域"）。 */
+    const val SEA_AREA_PLACEHOLDER = "某海域"
+
+    /** 海域级粒度判定（粒度联动）：航行中 → 退到海域级；锚泊/漂泊 → 海域级+状态注明。停靠 = 港口/锚地级不退。 */
+    fun isSeaAreaGranularity(motionText: String): Boolean {
+        val t = motionText.trim()
+        if (t.isEmpty()) return false
+        if (Regex("锚泊|漂泊").containsMatchIn(t)) return true
+        return fleetMotionFromText(t) == MotionState.SAILING
+    }
 
     /** 归一结果：状态 + 归一 key（顶层规范岛名/船名 + 次层命中词，供下游一致比较）。 */
     data class Normalized(val state: MotionState, val key: String?)

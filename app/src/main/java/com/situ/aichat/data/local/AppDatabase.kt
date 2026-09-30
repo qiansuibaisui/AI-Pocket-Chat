@@ -167,7 +167,7 @@ import com.situ.aichat.data.local.entity.WorldUserResidentEntity
         // [zCODE] P4·A5 手动关系登记（正本五.2 落点·优先于三表派生）。
         com.situ.aichat.data.local.entity.CharacterRelationEntity::class,
     ],
-    version = 53,
+    version = 54, // [zCODE] 工单#1：锚点双层格式——story_anchor_snapshots 加 fleetLayerJson（53→54）
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

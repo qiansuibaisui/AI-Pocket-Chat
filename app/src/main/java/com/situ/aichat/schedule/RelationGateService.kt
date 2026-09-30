@@ -2,6 +2,8 @@ package com.situ.aichat.schedule
 
 import com.situ.aichat.data.local.dao.NewsPipelineDao
 import com.situ.aichat.data.local.dao.StoryStateDao
+import com.situ.aichat.prompt.AnchorBlockParser
+import com.situ.aichat.prompt.AnchorVocabulary
 
 /**
  * [zCODE] P4·A5/A6 关系闸门（演出为准·登记记账——正本核心口径）。
@@ -32,19 +34,50 @@ class RelationGateService @Inject constructor(
      * [zCODE] A组真收口：管线级过滤——生成后按 relatedCharacterNames 过滤条目。
      * 名→UUID 解析 → 四源层级判定 → ③以下拦截该条（拦条不杀批）。
      * 无 DAO（测试场景）或无关联角色 = 放行（fail-open）。
+     *
+     * [zCODE] 工单#1·A3 追加：MotionState 一致性——fresh 航行中锚点 vs 岸上语义条目 → 拦（见 [filterMotionInconsistent]）。
+     * 双卡三调用点（生成侧 ScheduleGenerationService + 读料侧 Engine/余温）共用本口，A3 随之三处齐通。
      */
     suspend fun filterScheduleEvents(ownerUuid: String, events: List<com.situ.aichat.data.local.entity.ScheduleEventEntity>): List<com.situ.aichat.data.local.entity.ScheduleEventEntity> {
-        val dao = characterDao ?: return events // 测试兼容：无 DAO 不过滤
-        return events.filter { e ->
-            val names = e.relatedCharacterNames ?: return@filter true
-            val nameList = names.split("，", "、", ",", "「", "」").map { it.trim() }.filter { it.isNotEmpty() && it != "和" }
-            if (nameList.isEmpty()) return@filter true
-            nameList.all { name ->
-                val target = runCatching { dao.getByName(name) }.getOrNull()
-                if (target == null) return@all true // 名字查不到=可能非角色（用户名/地名）→ 放行
-                runCatching { canAppearInSchedule(ownerUuid, target.uuid) }.getOrDefault(true) // 闸门异常不阻日程
+        val dao = characterDao
+        val relationFiltered = if (dao == null) {
+            events // 测试兼容：无 DAO 不过滤（关系维度）
+        } else {
+            events.filter { e ->
+                val names = e.relatedCharacterNames ?: return@filter true
+                val nameList = names.split("，", "、", ",", "「", "」").map { it.trim() }.filter { it.isNotEmpty() && it != "和" }
+                if (nameList.isEmpty()) return@filter true
+                nameList.all { name ->
+                    val target = runCatching { dao.getByName(name) }.getOrNull()
+                    if (target == null) return@all true // 名字查不到=可能非角色（用户名/地名）→ 放行
+                    runCatching { canAppearInSchedule(ownerUuid, target.uuid) }.getOrDefault(true) // 闸门异常不阻日程
+                }
             }
         }
+        return filterMotionInconsistent(ownerUuid, relationFiltered)
+    }
+
+    /**
+     * [zCODE] 工单#1·A3 MotionState 一致性闸门：认知边界六.2「无靠港记录不得出现陆地场景」的日程落点——
+     * 锚点 fresh（≤6h·硬约束口径，AGING 仅软参考不强拦）且 MotionState=航行中 → 含岸上语义（登陆/上岸/集市/
+     * 酒馆…见 [AnchorVocabulary.impliesAshore] 同源词表）的条目拦（拦条不杀批）。
+     * MotionState 取全团层（fleetLayerJson 舰级事实源）优先，无全团层回落 motionStateRaw；
+     * 无锚点/超龄/非航行中 → 全放行（fail-open）。
+     */
+    private suspend fun filterMotionInconsistent(
+        ownerUuid: String,
+        events: List<com.situ.aichat.data.local.entity.ScheduleEventEntity>,
+    ): List<com.situ.aichat.data.local.entity.ScheduleEventEntity> {
+        if (events.isEmpty()) return events
+        val anchor = runCatching { storyStateDao.latestSnapshotFor(ownerUuid) }.getOrNull() ?: return events
+        if (AnchorVocabulary.freshnessOf(anchor.effectiveAt, System.currentTimeMillis()) != AnchorVocabulary.FreshnessLevel.FRESH) {
+            return events // 超龄/无锚点：位置按不明处理，不作硬约束
+        }
+        val fleetMotion = AnchorBlockParser.FleetLayerCodec.decode(anchor.fleetLayerJson)
+            ?.let { AnchorVocabulary.fleetMotionFromText(it.motionText) }
+        val state = fleetMotion ?: AnchorVocabulary.MotionState.fromRaw(anchor.motionStateRaw)
+        if (state != AnchorVocabulary.MotionState.SAILING) return events
+        return events.filterNot { e -> AnchorVocabulary.impliesAshore("${e.location}·${e.activity}") }
     }
 
     /** 判定 a→b 的关系层级。优先级：手动登记 > ①同团 > ③已演出 > ②报道触达 > 零级。 */

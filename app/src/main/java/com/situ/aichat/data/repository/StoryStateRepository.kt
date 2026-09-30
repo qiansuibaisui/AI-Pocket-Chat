@@ -66,6 +66,9 @@ class StoryStateRepository @Inject constructor(
             if (!AnchorVocabulary.isTopLevelNormalized(anchor.locationRaw)) {
                 Log.w(TAG, "location_unnormalized（顶层非规范岛名，key 走词表降级）raw=${anchor.locationRaw.take(30)}")
             }
+            // [zCODE] 工单#1：全团层在场 → MotionState 取舰级（船位=团级事实源，优先于个人位置词表归一；
+            // 个人层空/词表不识时全团层兜底，防"甲板"歧义类漂移）
+            val fleetMotion = anchor.fleetLayer?.let { AnchorVocabulary.fleetMotionFromText(it.motionText) }
             insertDeduped(
                 StoryAnchorSnapshotEntity(
                     characterUuid = characterUuid,
@@ -73,13 +76,14 @@ class StoryStateRepository @Inject constructor(
                     eventName = anchor.eventName,
                     locationRaw = anchor.locationRaw,
                     locationKey = normalized.key,
-                    motionStateRaw = normalized.state.raw,
+                    motionStateRaw = (fleetMotion ?: normalized.state).raw,
                     sourceRaw = source.raw,
                     effectiveAt = nowMillis, // 模型刚输出的位置 = 本轮成立
                     capturedAt = nowMillis,
                     relatedMessageUUID = turnEndMessageUuid,
                     fleetKey = dao.fleetKeyOfCharacter(characterUuid).orEmpty(), // [zCODE] 点3：快照时船团键（无团=空）
                     presentListJson = encodePresentList(anchor.presentList), // [zCODE] 点3：在场名单（仅规范式提取）
+                    fleetLayerJson = AnchorBlockParser.FleetLayerCodec.encode(anchor.fleetLayer), // [zCODE] 工单#1：全团层
                 ),
             )
         }

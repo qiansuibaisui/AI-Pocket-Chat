@@ -57,6 +57,13 @@ data class StoryAnchorSnapshotEntity(
      * 仅规范式提取，系统不做会话参与人推断；**历史行空串不回填**（手动修正兜底留 P3）。
      */
     val presentListJson: String = "",
+
+    /**
+     * [zCODE] 工单#1：全团层锚点 JSON（双层格式 `全团：{团名}·{海域}·{港口}（{船名}·MotionState）` 段提取，
+     * 见 [com.situ.aichat.prompt.AnchorBlockParser.FleetLayer]）。空 = 存量单层格式/无团——历史行不回填
+     * （同 presentListJson 口径）；world_sync 广播行随触发行 copy 原样携带（团级基线的载体）。
+     */
+    val fleetLayerJson: String = "",
 )
 
 /** 快照写入通道（raw 值即库契约，重命名断历史）。 */

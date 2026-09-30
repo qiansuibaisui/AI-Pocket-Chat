@@ -23,16 +23,55 @@ object AnchorBlockParser {
          * 位置原始整值（LB-4 规格：= "地点："与下一个"｜"之间的**原始子串**——值内含 ·（如船名
          * "雷德·佛斯号"）时绝不被切分；· 仅在 locationKey 层用于船团基线前缀比较，禁止参与字段切分与显示重组，
          * 显示端按原始整值渲染）。
+         *
+         * 工单#1 双层格式下本字段 = **个人层**位置（`｜个人：{个人位置}` 段）；仅全团层无个人段时为空串。
          */
         val locationRaw: String,
         val eventName: String = "",
         val timeText: String? = null,
         /** 在场名单（仅规范式 `｜{名}：在场/不在场（{位置}）` 段提取；其余形态空——系统不做会话参与人推断）。 */
         val presentList: List<PresentEntry> = emptyList(),
+        /** [zCODE] 工单#1：全团层（`全团：`前缀段解析；null = 存量单层格式/无团）。 */
+        val fleetLayer: FleetLayer? = null,
     )
 
     /** 在场名单条目（规范 v1 的 ｜ 段）。 */
     data class PresentEntry(val name: String, val present: Boolean, val location: String = "")
+
+    /**
+     * [zCODE] 工单#1：全团层锚点（双层格式 `全团：{团名}·{海域}·{港口/锚地}（{船名}·{MotionState}）`）。
+     *
+     * 字段保真提取（值内 · 容忍：括号段按**最后一个** · 切 motion——船名"雷德·佛斯号"整值保留）；
+     * motionText 为括号内中文原文（停靠/航行中/锚泊/漂泊），枚举判定走 [AnchorVocabulary.fleetMotionFromText]。
+     */
+    @kotlinx.serialization.Serializable
+    data class FleetLayer(
+        val fleetName: String = "",
+        val seaArea: String = "",
+        val port: String = "",
+        val shipName: String = "",
+        val motionText: String = "",
+    )
+
+    /** 全团层 JSON 编解码（落库列 fleetLayerJson ↔ 注入读取；fail-soft：编不出/解不出 = 空串/null，绝不炸链路）。 */
+    object FleetLayerCodec {
+        private val json = kotlinx.serialization.json.Json {
+            encodeDefaults = false
+            ignoreUnknownKeys = true
+        }
+
+        fun encode(layer: FleetLayer?): String {
+            if (layer == null) return ""
+            return runCatching { json.encodeToString(FleetLayer.serializer(), layer) }.getOrDefault("")
+        }
+
+        fun decode(raw: String): FleetLayer? {
+            val t = raw.trim()
+            if (t.isEmpty()) return null
+            return runCatching { json.decodeFromString(FleetLayer.serializer(), t) }.getOrNull()
+        }
+    }
+
 
     /** 行内 `[场景：a·b]` / `[场景：a·b·c]`——段间用 · 或 • 或 | 分隔，首段=地点，末段若像时间则记 timeText。 */
     private val INLINE_TAG = Regex("""\[场景[：:]\s*([^\]]+)]""")
@@ -53,6 +92,52 @@ object AnchorBlockParser {
 
     /** 在场名单段：`{名}：在场` / `{名}：不在场（{位置}）`。 */
     private val PRESENT_ENTRY = Regex("""([^：｜\n\r]+?)：(在场|不在场)(?:（([^）]*)）)?""")
+
+    // ── [zCODE] 工单#1：双层锚点段键（`【锚点】全团：…｜个人：…｜在场：…｜节点：…`；容忍全角/半角冒号） ──
+    /** 全团层前缀：`全团：{团名}·{海域}·{港口/锚地}（{船名}·{MotionState}）`。 */
+    private val FLEET_PREFIX = Regex("""^全团[：:]\s*(.*)$""")
+    /** 个人层段：`个人：{个人位置}`。 */
+    private val SEG_PERSONAL = Regex("""^个人[：:]\s*(.+)$""")
+    /** 在场名单段（工单#1 新式）：`在场：{名}、{名}`（全在场；区别于旧式 `{名}：在场`）。 */
+    private val SEG_PRESENT_LIST = Regex("""^在场[：:]\s*(.+)$""")
+    /** 节点段：`节点：{事件}`。 */
+    private val SEG_EVENT = Regex("""^节点[：:]\s*(.+)$""")
+    /** 全团层括号段：`（{船名}·{MotionState}）`——船名含 ·（雷德·佛斯号），按**最后一个** · 切 motion。 */
+    private val FLEET_PAREN = Regex("""（([^）]*)）\s*$""")
+
+    /**
+     * 全团层段解析（fail-soft：括号缺失/motion 不识 → 字段尽力提取，绝不抛）。
+     * 括号内按最后一个 · 切分（motion=词表可识的末段；否则整体作船名、motion 置空=UNKNOWN）。
+     */
+    private fun parseFleetLayer(bodyRaw: String): FleetLayer? {
+        val body = bodyRaw.trim()
+        if (body.isEmpty()) return null
+        val paren = FLEET_PAREN.find(body)
+        var shipName = ""
+        var motionText = ""
+        val head = if (paren != null) body.substring(0, paren.range.first).trim() else body
+        paren?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }?.let { inner ->
+            val lastDot = inner.lastIndexOf('·')
+            if (lastDot > 0 && AnchorVocabulary.fleetMotionFromText(inner.substring(lastDot + 1)) != null) {
+                shipName = inner.substring(0, lastDot).trim()
+                motionText = inner.substring(lastDot + 1).trim()
+            } else {
+                shipName = inner // motion 不识：括号整值作船名，motion=UNKNOWN（下游按位置不明粒度处理）
+            }
+        }
+        val parts = head.split('·').map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.isEmpty() && shipName.isEmpty()) return null
+        // 杂串守卫：无括号（无 船名·MotionState 锚）且不足 团名·海域·港口 三层 → 不视为全团层
+        //（防"甲板·白团旗舰"类个人位置串被误判成团名/海域）
+        if (paren == null && parts.size < 3) return null
+        return FleetLayer(
+            fleetName = parts.getOrElse(0) { "" },
+            seaArea = parts.getOrElse(1) { "" },
+            port = parts.drop(2).joinToString("·"),
+            shipName = shipName,
+            motionText = motionText,
+        )
+    }
 
     /** 痕迹超集（含畸形/未闭合形态）：任意锚点标记出现即计——解析全败时有痕迹可依（LB-3-B ③ 前提）。 */
     private val TRACE_MARKS = Regex("""\[场景[：:]|【锚点】|【(?:场景状态|当前场景|场景)】""")
@@ -89,9 +174,11 @@ object AnchorBlockParser {
         }
         // ②b 内嵌/规范单行形态（LB-3-B + 点3 归一）：`————【锚点】甲板·白团旗舰｜贝克曼：在场` ——
         // 位置段 = 标记后至 ｜/行尾的【原始整值】（LB-4：· 不切分·船名"雷德·佛斯号"保持整值），｜后在场名单提取。
+        // [zCODE] 工单#1 双层格式：`【锚点】全团：{团名}·{海域}·{港口}（{船名}·MotionState）｜个人：{个人位置}｜在场：{名单}｜节点：{事件}`
+        // —— `全团：`前缀 → FleetLayer 提取；个人/在场（名单式）/节点 新段键识别；旧式 `{名}：在场` 名单并存兼容。
         for (m in EMBEDDED_ANCHOR.findAll(response)) {
             val presentPart = response.substring(m.range.last + 1).substringBefore('\n')
-            val presentEntries = PRESENT_ENTRY.findAll(presentPart).mapNotNull { pm ->
+            val legacyEntries = PRESENT_ENTRY.findAll(presentPart).mapNotNull { pm ->
                 val name = pm.groupValues[1].trim()
                 if (name.isEmpty()) null else PresentEntry(
                     name = name,
@@ -99,11 +186,65 @@ object AnchorBlockParser {
                     location = pm.groupValues[3].trim(),
                 )
             }.take(6).toList()
-            val parsedEmbedded = OutputSanitizer.parseBlockTolerantly(m.groupValues[1], "anchor-embedded") { raw ->
-                val body = raw.trim().trimEnd('。', '，', '！', '？', '；', '，', ' ', '，')
-                if (body.isEmpty()) null else AnchorBlock(locationRaw = body, presentList = presentEntries)
+            // 新段键扫描（工单#1）：`个人：` `在场：{名单}` `节点：`（全团缺席的无团简式同样适用）
+            var personalLoc: String? = null
+            var nodeEvent: String? = null
+            val listEntries = mutableListOf<PresentEntry>()
+            for (seg in presentPart.split('｜')) {
+                val s = seg.trim()
+                if (s.isEmpty()) continue
+                val personal = SEG_PERSONAL.find(s)
+                if (personal != null) { personalLoc = personal.groupValues[1].trim(); continue }
+                val presentList = SEG_PRESENT_LIST.find(s)
+                if (presentList != null) {
+                    presentList.groupValues[1].split('、', '，', ',').map { it.trim() }
+                        .filter { it.isNotEmpty() && it != "和" }
+                        .take(6).forEach { listEntries.add(PresentEntry(name = it, present = true)) }
+                    continue
+                }
+                SEG_EVENT.find(s)?.let { nodeEvent = it.groupValues[1].trim() }
             }
-            if (parsedEmbedded is OutputSanitizer.BlockParseResult.Ok && parsedEmbedded.value.locationRaw.isNotEmpty()) {
+            val presentEntries = (legacyEntries + listEntries).take(6)
+            val parsedEmbedded = OutputSanitizer.parseBlockTolerantly(m.groupValues[1], "anchor-embedded") { raw ->
+                var body = raw.trim().trimEnd('。', '，', '！', '？', '；', '，', ' ', '，')
+                // 无团双层简式首段直接以 `个人：` 起写（省略全团段）→ 吸收为个人层（tail 段同名键不覆盖首段）
+                SEG_PERSONAL.find(body)?.let {
+                    if (personalLoc == null) personalLoc = it.groupValues[1].trim()
+                    body = ""
+                }
+                val fleetPrefix = FLEET_PREFIX.find(body)
+                when {
+                    fleetPrefix != null -> {
+                        val content = fleetPrefix.groupValues[1]
+                        val layer = parseFleetLayer(content)
+                        when {
+                            layer != null -> AnchorBlock(
+                                locationRaw = personalLoc.orEmpty(),
+                                eventName = nodeEvent.orEmpty(),
+                                presentList = presentEntries,
+                                fleetLayer = layer,
+                            )
+                            personalLoc != null -> AnchorBlock(locationRaw = personalLoc, eventName = nodeEvent.orEmpty(), presentList = presentEntries)
+                            content.isBlank() -> null
+                            // 全团段退化（无括号且不足三层·parseFleetLayer 拒收）：整值按位置落，有痕迹不丢
+                            else -> AnchorBlock(locationRaw = content.trim(), presentList = presentEntries)
+                        }
+                    }
+                    // 无团双层简式（`个人：`段在场）：首段按全团层尽力解析（括号/三层守卫防杂串误判）
+                    personalLoc != null -> AnchorBlock(
+                        locationRaw = personalLoc,
+                        eventName = nodeEvent.orEmpty(),
+                        presentList = presentEntries,
+                        fleetLayer = parseFleetLayer(body),
+                    )
+                    body.isEmpty() -> null
+                    // 存量主路径：位置整值原样（LB-4）；节点段为工单#1 新键，存量锚点无此段 → 零影响
+                    else -> AnchorBlock(locationRaw = body, eventName = nodeEvent.orEmpty(), presentList = presentEntries)
+                }
+            }
+            if (parsedEmbedded is OutputSanitizer.BlockParseResult.Ok &&
+                (parsedEmbedded.value.locationRaw.isNotEmpty() || parsedEmbedded.value.fleetLayer != null)
+            ) {
                 out.add(m.range.first to parsedEmbedded.value)
             }
         }
