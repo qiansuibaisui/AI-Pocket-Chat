@@ -140,15 +140,28 @@ class OfflineAfterglowPromptAssembler @Inject constructor(
         // [zCODE] ZD-11·注入结构改造：余温管线日程渲染改第三人称主语——模型读到的整段语境中，
         // 日程条目以 {character.name} 领起（非"你"），归因在数据形态上即正确（治威士忌三连归因反转：
         // 叮嘱行打不赢语境）。仅改 system 消息中日程/此刻模块的固定句式，不碰对话历史中的"你"。
-        val charName = character.name // [zCODE] ZD-11：提前捕获避免智能转换问题
+        // [zCODE] 防脆化①fail-loud：替换后仍检出二人称日程模式→抛异常（禁止静默跳过——模板漂移当场暴露）
+        // [zCODE] 防脆化②全量扫描：PromptBuilderSchedule 全模板排查，补入 你刚结束/你可能在放松/你此刻正在 三处
+        val charName = character.name
+        val secondPersonPattern = Regex("你(今天完整|的本人行程|正在|刚结束|可能在放松|此刻正在)")
         return builtMessages.map { msg ->
             if (msg.role != "system" || msg.content == null) msg
-            else msg.copy(
-                content = msg.content.orEmpty()
+            else {
+                val replaced = msg.content.orEmpty()
                     .replace("你今天完整的日程", "${charName}今天完整的日程")
                     .replace("你的本人行程", "${charName}本人行程")
-                    .replace("【此刻】你正在", "【此刻】${charName}正在"),
-            )
+                    .replace("【此刻】你正在", "【此刻】${charName}正在")
+                    .replace("你刚结束", "${charName}刚结束")
+                    .replace("你可能在放松", "${charName}可能在放松")
+                    .replace("你此刻正在", "${charName}此刻正在")
+                val leak = secondPersonPattern.find(replaced)
+                if (leak != null) {
+                    throw IllegalStateException(
+                        "ZD-11 fail-loud: 二人称日程残留 '${leak.value}' — 模板可能已变更，替换清单需更新",
+                    )
+                }
+                msg.copy(content = replaced)
+            }
         }
     }
 
