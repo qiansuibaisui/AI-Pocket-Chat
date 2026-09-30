@@ -57,6 +57,7 @@ class OfflineAfterglowGapLineTest {
             vectorMemory = mockk(relaxed = true),
             memoryService = mockk(relaxed = true),
             scheduleDao = mockk(relaxed = true),
+            relationGate = io.mockk.mockk(relaxed = true), // [zCODE] B组#5（读料闸门 runCatching→null=零变化）
             calendarReader = mockk(relaxed = true),
             momentChatContextService = mockk(relaxed = true),
             stickerRepo = mockk(relaxed = true),

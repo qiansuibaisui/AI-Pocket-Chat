@@ -123,7 +123,9 @@ class OfflineAfterglowService @Inject constructor(
                 "不要用任何 [标签]，不要长篇抒情，不要问候式空话。" +
                 // [zCODE] P2修补·主体绑定：日程条目是本人行程——提及"我刚才在做什么"时只能引用本人日程，
                 // 不得把日程里的共同活动条目归因给${userName}（治艾斯"集市吃饭"类归因错乱）。
-                "你日程里的事是你本人的行程，与${userName}无关——不要说'我们一起'除非确有见面记录。" +
+                // [zCODE] B组：第二人称→第三人称主语——消除余温上下文中"你"的歧义（你=角色还是=用户），
+                // 金样=威士忌条目（角色日程）不复读成用户行为（"你在喝威士忌"→绝迹）。
+                "${character.name}日程里的事是${character.name}本人的行程，与${userName}无关——不要把日程条目复读成${userName}的行为，不要说'我们一起'除非确有见面记录。" +
                 // [zCODE] P2·切片二（点1挂账必答题落地）：锚点接地——fresh(AGING) 锚点注入当前真实位置，
                 // 防止"人在海上却发'在酒馆想起你'"类穿帮（v3 第4项"接地注入"子集·fail-open 无锚点省略）。
                 com.situ.aichat.proactive.ProactiveAnchorGrounding.groundingFor(

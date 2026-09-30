@@ -49,6 +49,7 @@ class OfflineAfterglowPromptAssembler @Inject constructor(
     private val vectorMemory: VectorMemoryService,
     private val memoryService: MemoryService,
     private val scheduleDao: ScheduleDao,
+    private val relationGate: com.situ.aichat.schedule.RelationGateService, // [zCODE] B组#5：余温读料闸门
     private val calendarReader: CalendarReader,
     private val momentChatContextService: MomentChatContextService,
     private val stickerRepo: StickerRepository,
@@ -91,6 +92,11 @@ class OfflineAfterglowPromptAssembler @Inject constructor(
         )
         val todaySchedule = scheduleDao.scheduleFor(character.uuid, todayStart)
         val todayScheduleEvents = todaySchedule?.let { scheduleDao.eventsForSchedule(it.uuid) } ?: emptyList()
+        // [zCODE] B组#5 补修：余温管线读料侧闸门（暗门修复——独立于 AssistantTurnEngine 的第二日程读料路径，
+        // 存量脏日程从这条路漏进主动消息→ZD-10 复测第3项归因反转的近邻路径，不能留）。
+        val gatedScheduleEvents = runCatching {
+            relationGate.filterScheduleEvents(character.uuid, todayScheduleEvents)
+        }.getOrDefault(todayScheduleEvents)
         val calendarUpcoming = if (settings.calendarIntegrationEnabled) calendarReader.upcomingEvents(nowMillis)?.text else null
         val momentChatContext = momentChatContextService.buildMomentContext(
             character = character, userNickname = userName,
@@ -111,7 +117,7 @@ class OfflineAfterglowPromptAssembler @Inject constructor(
             structuredMemory = StructuredMemory.decode(character.structuredMemoryJSON),
             milestones = characterRepo.getMilestones(character.uuid),
             todaySchedule = todaySchedule,
-            todayScheduleEvents = todayScheduleEvents,
+            todayScheduleEvents = gatedScheduleEvents, // [zCODE] B组#5：闸门过滤后（存量脏条目不进余温 prompt）
             calendarUpcomingEvents = calendarUpcoming,
             momentChatContext = momentChatContext,
             economicState = economicStateService.resolveChatState(character.uuid, nowMillis),

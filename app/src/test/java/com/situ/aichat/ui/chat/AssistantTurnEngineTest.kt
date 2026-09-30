@@ -235,6 +235,7 @@ class AssistantTurnEngineTest {
             meetingAppointmentStore = mockk(relaxed = true),
             storyStateRepository = mockk(relaxed = true),
             newsPipeline = io.mockk.mockk(relaxed = true), // [zCODE] P3 中继 2 // [zCODE] P1·第2项（锚点预取 runCatching 容错→null=零变化）
+            relationGate = io.mockk.mockk(relaxed = true), // [zCODE] B组#5（读料闸门 runCatching→null=零变化）
             // WB4：本测试族不测世界书——stub 成「无书」保持既有断言语义（activateForTurn 恒 null = 装配零变化）。
             worldBookPromptService = mockk {
                 coEvery { activateForTurn(any(), any(), any(), any(), any(), any(), any()) } returns null
