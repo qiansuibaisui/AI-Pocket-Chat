@@ -851,4 +851,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_49_50,
     MIGRATION_50_51,
     MIGRATION_51_52,
+    MIGRATION_52_53, // [zCODE] ZD-9 根因修复：定义存在但漏注册到数组→v52→v53 找不到迁移→秒崩
 )
