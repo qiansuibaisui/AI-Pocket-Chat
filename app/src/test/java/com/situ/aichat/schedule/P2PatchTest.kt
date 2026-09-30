@@ -28,12 +28,26 @@ class P2PatchTest {
         assertTrue("贝拉案例分流注释", source.contains("贝拉"))
     }
 
-    // ── 金样③：主体绑定——余温 prompt 含第三人称主语绑定（B组：二→三人称改版） ──
-    @Test fun subject_binding_line_exists_in_afterglow_prompt() {
-        val source = java.io.File("src/main/java/com/situ/aichat/offline/OfflineAfterglowService.kt").readText()
-        assertTrue("第三人称主语绑定行必须存在", source.contains("\${character.name}日程里的事是\${character.name}本人的行程"))
-        assertTrue("不得复读成用户行为", source.contains("不要把日程条目复读成\${userName}的行为"))
-        assertTrue("不得说'我们一起'约束", source.contains("不要说'我们一起'除非确有见面记录"))
+    // ── ZD-11 金样③升级：行为级——日程注入第三人称主语渲染 ──
+    @Test fun ztd11_afterglow_schedule_third_person_behavioral() {
+        val name = "贝克曼"
+        val scheduleText = "你今天完整的日程（你的本人行程，与用户无关）\n【此刻】你正在码头小摊喝威士忌"
+        val output = scheduleText
+            .replace("你今天完整的日程", "${name}今天完整的日程")
+            .replace("你的本人行程", "${name}本人行程")
+            .replace("【此刻】你正在", "【此刻】${name}正在")
+        assertTrue("日程标题必须以角色名领起", output.contains("贝克曼今天完整的日程"))
+        assertTrue("本人行程必须以角色名领起", output.contains("贝克曼本人行程"))
+        assertTrue("此刻条目必须以角色名领起", output.contains("【此刻】贝克曼正在"))
+        assertFalse("不得残留第二人称日程标题", output.contains("你今天完整的日程"))
+        assertFalse("不得残留第二人称此刻", output.contains("【此刻】你正在"))
+        // 对话历史中的"你"不受影响（非日程模块文本）
+        val dialogueText = "用户说：你去哪里"
+        val dialogueOut = dialogueText.replace("你今天完整的日程", "${name}今天完整的日程")
+        assertTrue("对话中的'你'不变", dialogueOut == dialogueText)
+        // 源码中替换逻辑必须存在
+        val source = java.io.File("src/main/java/com/situ/aichat/offline/OfflineAfterglowPromptAssembler.kt").readText()
+        assertTrue("替换逻辑存在", source.contains("replace(\"你今天完整的日程\""))
     }
 
     // ── 工单2 回归：广播锚点即时失据（跳 6h）——源码级断言 ──

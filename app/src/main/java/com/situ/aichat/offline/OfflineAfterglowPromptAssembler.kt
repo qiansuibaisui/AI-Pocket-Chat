@@ -107,7 +107,7 @@ class OfflineAfterglowPromptAssembler @Inject constructor(
             characterName = character.name, userName = userName,
             vectorThresholdPercent = settings.vectorSearchThreshold, settings = settings.toWorldInfoSettings(),
         )
-        return PromptBuilder.buildMessages(
+        val builtMessages = PromptBuilder.buildMessages(
             character = character,
             conversation = convo,
             sortedMessages = history,
@@ -137,6 +137,19 @@ class OfflineAfterglowPromptAssembler @Inject constructor(
             worldInfo = worldInfo,
             now = nowInstant,
         )
+        // [zCODE] ZD-11·注入结构改造：余温管线日程渲染改第三人称主语——模型读到的整段语境中，
+        // 日程条目以 {character.name} 领起（非"你"），归因在数据形态上即正确（治威士忌三连归因反转：
+        // 叮嘱行打不赢语境）。仅改 system 消息中日程/此刻模块的固定句式，不碰对话历史中的"你"。
+        val charName = character.name // [zCODE] ZD-11：提前捕获避免智能转换问题
+        return builtMessages.map { msg ->
+            if (msg.role != "system" || msg.content == null) msg
+            else msg.copy(
+                content = msg.content.orEmpty()
+                    .replace("你今天完整的日程", "${charName}今天完整的日程")
+                    .replace("你的本人行程", "${charName}本人行程")
+                    .replace("【此刻】你正在", "【此刻】${charName}正在"),
+            )
+        }
     }
 
     private companion object {
