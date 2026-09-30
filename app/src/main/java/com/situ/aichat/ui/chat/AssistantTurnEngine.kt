@@ -132,6 +132,7 @@ internal class AssistantTurnEngine(
     private val meetingAppointmentStore: MeetingAppointmentStore,
     private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项：锚点中央登记读 API
     private val newsPipeline: com.situ.aichat.morgans.NewsPipelineService, // [zCODE] P3 中继 2：新闻转述层注入
+    private val relationGate: com.situ.aichat.schedule.RelationGateService, // [zCODE] B组#5：闸门双卡读料侧
     private val errorFlow: MutableStateFlow<String?>,
     private val infoToastFlow: MutableStateFlow<String?>,
     private val isDelivering: MutableStateFlow<Boolean>,
@@ -268,6 +269,11 @@ internal class AssistantTurnEngine(
             .toLocalDate().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val todaySchedule = scheduleDao.scheduleFor(character.uuid, todayStartMillis)
         val todayScheduleEvents = todaySchedule?.let { scheduleDao.eventsForSchedule(it.uuid) } ?: emptyList()
+        // [zCODE] B组#5·闸门双卡（读料侧重跑）：存量污染日程在 prompt 组装前即刻失效（ZD-10 修复——
+        // 生成时 A5 拦截+读料时重跑=双卡；不清洗库、不动记忆，脏数据只被读料边界拦住不进回复上下文）。
+        val gatedScheduleEvents = runCatching {
+            relationGate.filterScheduleEvents(character.uuid, todayScheduleEvents)
+        }.getOrDefault(todayScheduleEvents)
         // [zCODE] P1·第2项 读取处1 预取：当前锚点快照（currentAnchor 全量取——fresh/aging/stale 分级在渲染侧判定）
         // + 近 24h 已完成事件清单（「不得重新执行」注入数据源）。失败不阻塞回合（锚点是增强数据）。
         val storyAnchorSnapshot = runCatching { storyStateRepository.currentAnchorFor(character.uuid) }.getOrNull()
@@ -376,7 +382,7 @@ internal class AssistantTurnEngine(
             structuredMemory = structuredMemory,
             milestones = milestones,
             todaySchedule = todaySchedule,
-            todayScheduleEvents = todayScheduleEvents,
+            todayScheduleEvents = gatedScheduleEvents, // [zCODE] B组#5：读料侧闸门过滤后的事件（存量污染即刻失效）
             recentDaysScheduleEvents = recentDaysScheduleEvents,
             calendarUpcomingEvents = calendarUpcomingEvents,
             momentChatContext = momentChatContext,
