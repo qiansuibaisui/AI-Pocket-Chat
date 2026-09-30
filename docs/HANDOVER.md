@@ -39,6 +39,7 @@ a98abc8  B组#5+#6（闸门双卡读料侧+在场一致性评估）
 | P3出包 | abc0203 | Sep 29 | 225,893,465 | 未记录 |
 | P2修补批出包 | b2ea491 | Sep 30 | 225,926,233 | `21f03e6644…8dbf90`（ZD-9 崩溃包） |
 | ZD-9修复出包 | aa65083 | Sep 30 | 225,926,233 | 未记录（同大小·用户实测已通） |
+| 三合一大考包 | 88e4b25（HEAD=6fe24b6 docs+1） | Oct 1 | 225,926,233 | 文件 `47719275c9d3f4f995f2b21f04fd13de9060e37fd56879b7d703720e47f4f7b6`·证书 `922c5fe7f41748dcdb5eed4eed628adb7339e92f429275a1bef7a7107598ae55`（v2 签名·CN=AI Pocket Chat Mod·RSA4096）·包内已验 #1 特征串（fleetLayerJson/全团：/某海域）·**MigrationTest 未跑（无设备/AVD/系统镜像）——装包前须真机补跑（惯例②缺口，见真机验收表）** |
 
 ## ② 工单 #1 完整规格（含附加两项）
 
@@ -127,7 +128,7 @@ a98abc8  B组#5+#6（闸门双卡读料侧+在场一致性评估）
 |---|---|---|
 | **#1 锚点格式双层规范化** | ✅ 施工闭合（`88e4b25`）·待真机验收 | 全量回归已过（下行） |
 | 全量回归（#1 后） | ✅ 一轮已跑（2026-10-01·Gradle 官方计数）：9244 例·失败 10·**全部存量红**（干净 HEAD 复跑同 10 例：StoryNarrativeInjectionTest 3 + ToolCallingPromptAssemblyGoldenTest 5 + OurDaysViewModelTest 1 + StoryShareCardRendererTest 1——环境性/基线陈旧·#1 新增 0 失败） | — |
-| **三合一大考包出包** | assembleRelease+验签+双报SHA | #1+全量绿 |
+| **三合一大考包出包** | ✅ 出包完成（2026-10-01·双报SHA 见包史表）·待用户真机安装+MigrationTest 补跑 | #1+全量绿 |
 | B组后续（中继2/3） | B8/B9 导演系统+C10/C11 频率门槛 | #1+真机复验 |
 | P5 群聊/P6 管理台/P7 地图 | 排队 | P4 全闭合 |
 
