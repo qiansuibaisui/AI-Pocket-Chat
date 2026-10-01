@@ -87,6 +87,9 @@ class DirectorTextGameServiceTest {
         val mirror = saved.first { it.conversationUuid == "bella-conv" }
         assertEquals("system", mirror.roleRaw)
         assertEquals(MessageKind.SYSTEM_EVENT_CARD.raw, mirror.messageKindRaw)
+        // 收货观察②：镜像必须 ⚓ 同款 SystemEventJson 信封——消费端解析失败=整条跳过（纯文本会 UI/LLM 双落空）
+        val envelope = com.situ.aichat.data.model.SystemEventJson.parse(mirror.content)
+        assertTrue("镜像须为可解析信封且标题带导演推进: ${mirror.content}", envelope != null && envelope.title.contains("导演推进"))
         // 拍板A：回合记账 dir-m:{sessionId}:{turnIndex}·被点名 cast（艾斯/贝拉均在 prose 中）
         coVerify(exactly = 1) {
             storyRepo.applyDirectorEvent(listOf("ace", "bella"), any(), any(), any(), "dir-m:s1:0", any(), any())

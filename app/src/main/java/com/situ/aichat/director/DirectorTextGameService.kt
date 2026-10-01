@@ -107,7 +107,16 @@ class DirectorTextGameService @Inject constructor(
                         messageUUID = UUID.randomUUID().toString(),
                         conversationUuid = convo.uuid,
                         roleRaw = "system",
-                        content = prose.take(120),
+                        // [zCODE] 中继2 收货观察②修复：事件卡消费端只认 SystemEventJson 信封（PromptBuilderHistory
+                        // 非红包类→"[系统记录：emoji+title]"进该角色 LLM 历史；解析失败→整条跳过=纯文本镜像双落空）。
+                        // 故镜像必须走 ⚓ 同款信封（makeSceneUpdateEventData·title 40 字截断同注入防御口径）。
+                        content = com.situ.aichat.data.model.SystemEventJson.encode(
+                            com.situ.aichat.data.model.makeSceneUpdateEventData(
+                                eventName = "导演推进",
+                                locationRaw = prose.take(28),
+                                timestampMillis = nowMillis,
+                            ),
+                        ),
                         timestamp = nowMillis,
                         messageKindRaw = MessageKind.SYSTEM_EVENT_CARD.raw,
                     ),
