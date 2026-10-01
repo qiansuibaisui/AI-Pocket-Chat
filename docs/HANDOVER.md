@@ -187,6 +187,35 @@ a98abc8  B组#5+#6（闸门双卡读料侧+在场一致性评估）
 **状态对齐备注**：仓内台账 P4 A组已真收口（`3d1916c`，relations 表+A1/A3+闸门接线+A7+A2 宏断言+名→UUID）；
 "下一棒"按台账余量=中继2/3。若外部计划中"A组"为新批次/重开项，以用户工单为准再对齐本表。
 
+### B8/B9 勘察单（2026-10-01·终审工单已到·提案待拍板后写码）
+
+**勘察结论（底座四项全确认）**：①`StoryEventSource.DIRECTOR` 枚举在库且已入 `SCHEDULE_STAR_SOURCES`（日程星标✓）；
+②`applyDirectorEvent` 通道②就绪且**本身不调广播**（广播是独立的 `broadcastToFleetMates` 调用——B9"两人相遇≠全船移动"恰好不该广播，佩罗娜教训同源）；③新闻管线 `publish` 幂等（sourceRaw+sourceRefUuid）+延迟三态扇出（同团 6h/跨海 24h/无风带阻断）="择机报道"现成通道；④周期基建=WorkManager PeriodicWork+BootReceiver 补排（NotificationAlarmScheduler 同范式，B9 扫描直接挂）。
+
+**提案 1·eventKey 粒度**（沿既有惯例 kebab+id：`offline-meeting-$sessionId`/`news-$uuid`/`schedule_event_$id`）：
+- B8 手动档：`dir-m:{sessionId}:{turnIdx}`——**每回合一记**。【已执行事件】注入按清单引用，回合粒度防复读精确到节拍；唯一索引天然幂等（重试零重复）。
+- B9 规则档：`dir-r:{pairKey}:{yyyyMMdd}`（pairKey=两角色 uuid 排序拼接）——**每对每日一记**，唯一索引即"每对每日≤1"硬闸；72h 冷却另走 recentLedgerFor 前缀扫描。
+
+**提案 2·B9 频率参数（数字提案·参数位形态=DirectorRulesConfig 常量对象，C10 收编时改读设置）**：
+| 参数 | 提案值 | 依据 |
+|---|---|---|
+| 扫描周期 | 6h | 对齐锚点 FRESH 上限（位置硬约束时效=扫描窗，语义自洽） |
+| 触发概率 | 10%/合格对/次 | 期望≈每对每日 0.4 次——远方事件该稀 |
+| 每日上限 | 全库 2 条/日 | 轻量事件不刷屏 |
+| 单对冷却 | 72h | recentLedgerFor 30 天窗内查 `dir-r:{pairKey}` 前缀 |
+| 择机报道 | B9 30% 概率 publish；B8 手动档默认不报（用户亲历无需新闻） | 远方小事非新闻常态 |
+
+**提案 3·B9 接线**：扫描器（WorkManager 6h）→ 判定合格对（同位置+{{user}}不在场，见提案4）→ 概率/上限/冷却/幂等四闸 → `applyDirectorEvent`（双方落锚+ledger 记账+星标）→ 30% 择机 `newsPipeline.publish(sourceRaw="director_rules", sourceRefUuid=eventKey, participants=[双方])`。**不走 broadcast/⚓通知**（相遇是两人事）；B8 仅事件含船位变更时才补调 broadcast。
+
+**提案 4·知情记账数据面（不新建认知结构，全复用四源判定）**：
+- 参与者=ledger 行（DIRECTOR）→ 闸门四源自动认 ③新识（可提及共同经历）✓
+- 不在场角色=**零写入**，认知经 news 延迟扇出或对话转报建立（认知边界四.2 既有口径）✓
+- {{user}}：B8 入场/背景板=文游 prose 落**参与角色的 conversation**（线下模式同范式·在场亲见由上下文自证，背景板=亲见未参与）；B9=**{{user}} 侧零写入**，获知唯一通道=摩根斯推送/转报 ✓
+- **{{user}} 在场判定（拍板点）**：提案=「最近一次对话角色所属船团的当前锚点」为用户位置代理（养女条目叙事上用户随团）+`userFleetKeyOverride` 参数位；B9 候选对须两角色锚点均不与代理位置同位置（同位置口径=fleetLayer.seaArea+MotionState 一致，双层锚点 absent 时回退 normalizeIslandTop）。
+
+**待终审拍板四点**：A eventKey 两案；B 频率五数字；C {{user}} 在场判定代理案；D B8 prose 落参与角色 conversation+B9 不走广播的接线确认。
+**施工切面（拍板后）**：DirectorRulesConfig+DirectorRulesScanService+WorkManager/Boot 挂点 → DirectorTextGameService（start 入场/背景板·advance·finalize）→ 金样（B9 判定纯函数四闸+记账三态知情映射+防广播误触）。红线缺料上报：C/D 两处不拍板不写码。
+
 ---
 
 交棒完毕。HEAD=`33731c9`，工作区干净，origin/zcode-mod 同步。
