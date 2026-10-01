@@ -52,6 +52,24 @@ interface StoryStateDao {
     @Query("SELECT * FROM story_event_ledger WHERE characterUuid = :characterUuid ORDER BY completedAt DESC")
     suspend fun ledgerHistoryFor(characterUuid: String): List<StoryEventLedgerEntity>
 
+    // ── [zCODE] B9 规则档（中继2）：相遇闸门三查询 ──
+
+    /**
+     * 最近一次线下见面记账行（DirectorRulesScanService 用户位置代理的唯一取材口）。
+     * **source 过滤即拍板 C 修正**：只认线下/见面类（OFFLINE_MEETING）——电话虫等异地通话不写此源，
+     * 代理不会漂到对方船上。
+     */
+    @Query("SELECT * FROM story_event_ledger WHERE sourceRaw = 'offline_meeting' ORDER BY completedAt DESC LIMIT 1")
+    suspend fun latestOfflineMeetingLedger(): StoryEventLedgerEntity?
+
+    /** 当日已触发的 B9 相遇事件数（DISTINCT eventKey——每事件双方各一行同 key）。 */
+    @Query("SELECT COUNT(DISTINCT eventKey) FROM story_event_ledger WHERE eventKey LIKE 'dir-r:%' AND completedAt >= :sinceMillis")
+    suspend fun directorRulesEventCountSince(sinceMillis: Long): Int
+
+    /** 指定 eventKey 前缀在窗口内的行数（单对 72h 冷却扫描：前缀=`dir-r:{pairKey}:%`）。 */
+    @Query("SELECT COUNT(*) FROM story_event_ledger WHERE eventKey LIKE :prefix AND completedAt >= :sinceMillis")
+    suspend fun ledgerCountByKeyPrefixSince(prefix: String, sinceMillis: Long): Int
+
     // ── 备份（13.6 全局段；整存整取） ──
 
     @Query("SELECT * FROM story_anchor_snapshots ORDER BY capturedAt ASC")

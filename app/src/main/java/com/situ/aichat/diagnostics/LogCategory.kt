@@ -57,6 +57,8 @@ enum class LogCategory(val sources: List<String>) {
         listOf(
             LogSource.WORLD_BULLETIN, LogSource.WORLD_EAVESDROP,
             LogSource.WORLD_LORE, LogSource.WORLD_FIRST_MEET,
+            // [zCODE] B8/B9 导演系统（中继2）：文游推进与远方相遇扫描同属世界系统日志
+            LogSource.DIRECTOR_TEXT_GAME, LogSource.DIRECTOR_RULES_SCAN,
         ),
     ),
 

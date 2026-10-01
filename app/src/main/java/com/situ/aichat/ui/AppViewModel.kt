@@ -278,6 +278,14 @@ class AppViewModel @Inject constructor(
             requireNetwork = false,
             existingPolicy = ExistingWorkPolicy.KEEP,
         )
+        // [zCODE] B9 规则档（中继2·终审五数）：远方相遇扫描周期任务（6h）——KEEP 幂等（WorkManager 周期任务自持跨重启）；
+        // 纯本地判定不需网络（fail-closed：代理失效/无合格对即整轮空转零成本）。
+        backgroundScheduler.schedulePeriodic(
+            uniqueName = com.situ.aichat.director.DirectorRulesScanWorker.UNIQUE_PERIODIC,
+            workerClass = com.situ.aichat.director.DirectorRulesScanWorker::class.java,
+            repeatInterval = java.time.Duration.ofMillis(com.situ.aichat.director.DirectorRulesConfig.SCAN_INTERVAL_MS),
+            requireNetwork = false,
+        )
         // P7.1.2 日记：回前台触发自动生成（1:1 iOS scenePhase .active → runDiaryGeneration，先补昨天再查今天）。
         // KEEP 防与周期兜底重入；协调器自带并发锁 + 时间门槛 + 去重，重复排入安全。
         backgroundScheduler.scheduleOneShot(

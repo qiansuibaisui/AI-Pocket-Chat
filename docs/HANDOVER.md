@@ -84,6 +84,7 @@ a98abc8  B组#5+#6（闸门双卡读料侧+在场一致性评估）
 | MockK answers | `coVerify` 块断言不稳→用 `answers + firstArg` 执行期捕获 | P3 中继1 |
 | 长命令后台化 | 预期 >2min 的命令一律 Start-Process 分离+日志轮询，禁止前台等待 | SOP |
 | 构建不并行 | 两个 gradle 构建禁止并行（build-cache 锁竞争） | SOP |
+| push 验证 | 一律 `git ls-remote origin zcode-mod`（指名分支·不用裸 HEAD），远端 hash 为唯一判据（本地报错≠远端未达——f05bc0b 案例：本地 connect 失败但远端已收到） | ZD-12 后 2026-10-01 用户裁定 |
 
 ### 已证伪清单（死路·不再走）
 
@@ -130,7 +131,7 @@ a98abc8  B组#5+#6（闸门双卡读料侧+在场一致性评估）
 | **#1 锚点格式双层规范化** | ✅ 施工闭合（`88e4b25`）·待真机验收 | 全量回归已过（下行） |
 | 全量回归（#1 后） | ✅ 一轮已跑（2026-10-01·Gradle 官方计数）：9244 例·失败 10·**全部存量红**（干净 HEAD 复跑同 10 例：StoryNarrativeInjectionTest 3 + ToolCallingPromptAssemblyGoldenTest 5 + OurDaysViewModelTest 1 + StoryShareCardRendererTest 1——环境性/基线陈旧·#1 新增 0 失败） | — |
 | **三合一大考包出包** | ✅ 出包完成（2026-10-01·双报SHA 见包史表）·待用户真机安装+MigrationTest 补跑 | #1+全量绿 |
-| B组后续（中继2/3） | B8/B9 导演系统+C10/C11 频率门槛 | #1+真机复验 |
+| B组后续（中继2/3） | **中继2 ✅ 施工闭合（B8 文游引擎+B9 远方相遇·金样19例·拍板四点见勘察单节）**；中继3（C10/C11 频率门槛）排队——C10 收编点已埋（DirectorRulesConfig 常量+注释指向） | #1+真机复验 |
 | P5 群聊/P6 管理台/P7 地图 | 排队 | P4 全闭合 |
 
 ### 真机验收待决项
@@ -214,6 +215,21 @@ a98abc8  B组#5+#6（闸门双卡读料侧+在场一致性评估）
 - **{{user}} 在场判定（拍板点）**：提案=「最近一次对话角色所属船团的当前锚点」为用户位置代理（养女条目叙事上用户随团）+`userFleetKeyOverride` 参数位；B9 候选对须两角色锚点均不与代理位置同位置（同位置口径=fleetLayer.seaArea+MotionState 一致，双层锚点 absent 时回退 normalizeIslandTop）。
 
 **待终审拍板四点**：A eventKey 两案；B 频率五数字；C {{user}} 在场判定代理案；D B8 prose 落参与角色 conversation+B9 不走广播的接线确认。
+
+**拍板结果（2026-10-01 终审·全部落码）**：
+- A ✅ 照准（dir-m 回合粒度/dir-r 对日粒度·唯一索引硬闸）；
+- B ✅ 五数全批（DirectorRulesConfig 常量形态·C10 收编改读设置）；
+- C ⚠️ 修正后准——**代理只认线下/见面类会话**（电话虫等异地通话不计入，否则代理漂到对方船上双向误判）：落法=代理唯一取材口 `latestOfflineMeetingLedger`（DAO source='offline_meeting' 过滤·结构性排除异地通话）+ `USER_FLEET_KEY_OVERRIDE` 兜底；代理超 24h 失效→整轮 fail-closed 放弃；
+- D ✅ 照准+补——**背景板 prose 双侧落**：host 会话（=「亲见」界面证据·用户开线下模式看着剧情推进）assistant 消息 + 其余 cast 会话 system 事件卡镜像；B9 不走广播/⚓照准（B8 仅船位变更补调 broadcast）。
+
+**中继2 施工记录（B8/B9·管道无 UI·UI 归 P6）**：
+- `director/DirectorRulesConfig.kt`（五参数位+代理时效+override）；
+- `director/DirectorRulesScanService.kt`（B9：同位置双层口径→跨团配对→在场排除→四闸→通道②记账→30% 择机 publish participants=双方；{{user}} 侧零写入=结构性（不注入消息仓储）；模板句零 LLM 成本）；
+- `director/DirectorTextGameService.kt`（B8：回合级无状态·记账即时落库进程死亡不丢账；入场/背景板模式指令差；被点名 cast 通道②记账 dir-m:{sid}:{turn}；fleetLineOf 复用 #1 粒度口径）；
+- `director/DirectorRulesScanWorker.kt`+AppViewModel 排程（6h 周期·KEEP·requireNetwork=false·WorkManager 自持跨重启）；
+- StoryStateDao 三查询（最近线下行/当日计数/对冷却）·零 schema 变更零迁移；
+- LogSource 两来源（导演文游/导演规则扫描）入 WORLD 类目（LogCategory 不变量测试同步覆盖）；
+- 金样 19 例全绿：B9 13 例（同位置双层/回退岛名/UNKNOWN·室内·途中拒配/fail-closed/在场排除/C 修正结构性证据/四闸各一/跨团排除/防广播/日期桶锁定）+B8 6 例（双侧落点+回合记账/背景板旁观指令/入场输入/船位变更才广播·不变不播/空响应零写入）。
 **施工切面（拍板后）**：DirectorRulesConfig+DirectorRulesScanService+WorkManager/Boot 挂点 → DirectorTextGameService（start 入场/背景板·advance·finalize）→ 金样（B9 判定纯函数四闸+记账三态知情映射+防广播误触）。红线缺料上报：C/D 两处不拍板不写码。
 
 ---

@@ -29,8 +29,9 @@ object AnchorInjectionBuilder {
     /**
      * [zCODE] 工单#1：全团层渲染行（粒度联动强制口径——模型漂移写了港口也按 MotionState 退级：
      * 航行中/锚泊/漂泊 → 港口位一律「某海域」；停靠 → 港口原样）。全空 → null（不出行）。
+     * [zCODE] 中继2 起 public：B8 导演 prompt 的角色位置行复用同一渲染口径（DirectorTextGameService）。
      */
-    private fun fleetLineOf(layer: AnchorBlockParser.FleetLayer): String? {
+    fun fleetLineOf(layer: AnchorBlockParser.FleetLayer): String? {
         val motionText = sanitizeAnchorText(layer.motionText, 10)
         val shipName = sanitizeAnchorText(layer.shipName, 20)
         val portPart = if (AnchorVocabulary.isSeaAreaGranularity(layer.motionText)) {

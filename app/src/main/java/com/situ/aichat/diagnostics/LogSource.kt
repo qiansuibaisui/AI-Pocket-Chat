@@ -86,6 +86,10 @@ object LogSource {
     const val WORLD_LORE = "世界风物志"
     const val WORLD_FIRST_MEET = "世界初遇"
 
+    // MARK: - [zCODE] B8/B9 导演系统（中继2·终审拍板 2026-10-01）
+    const val DIRECTOR_TEXT_GAME = "导演文游"
+    const val DIRECTOR_RULES_SCAN = "导演规则扫描"
+
     /** 全部已知来源（[LogCategory] 覆盖不变量测试 + 去重校验的枚举源）。新增 source 务必同步追加。 */
     val ALL: List<String> = listOf(
         CHAT, VOICE_CALL,
@@ -104,5 +108,6 @@ object LogSource {
         BUSY_REPLY, RECOVERY_REPLY, SALARY_INFERENCE, AFFINITY_SENSE,
         RED_PACKET_DECISION, PET_DIARY, OFFLINE_MEETING_MEMORY, OFFLINE_AFTERGLOW,
         WORLD_BULLETIN, WORLD_EAVESDROP, WORLD_LORE, WORLD_FIRST_MEET,
+        DIRECTOR_TEXT_GAME, DIRECTOR_RULES_SCAN,
     )
 }
