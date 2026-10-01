@@ -20,6 +20,7 @@ import com.situ.aichat.notification.Notifier
 import com.situ.aichat.prompt.schedule.CharacterSleepChecker
 import io.mockk.coEvery
 import io.mockk.coVerify
+import com.situ.aichat.moments.MomentCognitionGate
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
@@ -55,12 +56,18 @@ class MomentsMeetingGateTest {
         isInOfflineMode = inMeeting, currentOfflineSessionId = if (inMeeting) "sess-1" else null,
     )
 
+    // [zCODE] 中继3·禁令二：认知闸关系桩（全放行=默认态）
+    private val cognitionRelationGate = mockk<com.situ.aichat.schedule.RelationGateService>(relaxed = true)
+
     @Before
     fun setUp() {
         mockkObject(Notifier)
         every { Notifier.postNewMomentPost(any(), any(), any(), any(), any(), any()) } returns Unit
         every { Notifier.postMergedMomentPosts(any(), any(), any(), any()) } returns Unit
         mockkObject(ProcessLifecycleOwner.Companion)
+        // [zCODE] 中继3·禁令二：认知闸全放行桩（FLEET_MATE≥双向知晓）——本测试类全部既有断言零改（默认态不变）
+        coEvery { cognitionRelationGate.levelBetween(any(), any()) } returns
+            com.situ.aichat.schedule.RelationGateService.Level.FLEET_MATE
         conversationDao = mockk(relaxed = true)
         messageDao = mockk(relaxed = true)
         momentRepo = mockk(relaxed = true)
@@ -80,6 +87,7 @@ class MomentsMeetingGateTest {
             llmSlot = mockk(relaxed = true), userProfileDao = mockk(relaxed = true),
             scheduleDao = mockk(relaxed = true), conversationDao = conversationDao,
             storyStateRepository = mockk(relaxed = true), // [zCODE] P1·第2项 读取处3
+            cognitionGate = MomentCognitionGate(cognitionRelationGate), // [zCODE] 中继3·禁令二：认知闸（全放行=默认态）
         )
         MomentPendingInteractionStore.save(context, emptyList())
     }

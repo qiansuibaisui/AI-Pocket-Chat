@@ -173,4 +173,19 @@ class DirectorTextGameServiceTest {
         assertTrue("空响应零写入", saved.isEmpty())
         coVerify(exactly = 0) { storyRepo.applyDirectorEvent(any(), any(), any(), any(), any(), any(), any()) }
     }
+
+    // ── [zCODE] 中继3·项6（对单问四欠账）：未点名 cast 不记账——cast 边界断言 ──
+
+    @Test fun unmentioned_cast_member_not_ledgered() = runTest {
+        stubWorld()
+        // prose 只点名艾斯（贝拉在 cast 名单内但未出现在叙述中）→ 记账只落艾斯
+        stubLlm("艾斯独自在甲板练刀，刀光在夜色里划出弧线。\n[场景：甲板·夜]")
+        coEvery { storyRepo.currentAnchorFor(any()) } returns null
+
+        service.advanceTurn(request(DirectorTextGameService.Mode.BACKGROUND), config, now)
+
+        coVerify(exactly = 1) { storyRepo.applyDirectorEvent(any(), any(), any(), any(), "dir-m:s1:0", any(), any()) }
+        coVerify(exactly = 1) { storyRepo.applyDirectorEvent(listOf("ace"), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { storyRepo.applyDirectorEvent(listOf("ace", "bella"), any(), any(), any(), any(), any(), any()) }
+    }
 }

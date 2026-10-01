@@ -62,6 +62,8 @@ class NotificationSchedulerBehaviorTest {
     private val alarmScheduler: NotificationAlarmScheduler = mockk(relaxed = true)
     private val store: NotificationSchedulerStore = mockk(relaxed = true)
     private val learningService: NotificationLearningService = mockk(relaxed = true)
+    // [zCODE] 中继3·项5(v2)：发射闸设置桩——默认关=现行为（本测试类全部既有断言零改）
+    private val launchGateSettings = mockk<com.situ.aichat.morgans.NewsControlSettings>(relaxed = true)
 
     private lateinit var scheduler: NotificationScheduler
 
@@ -119,8 +121,11 @@ class NotificationSchedulerBehaviorTest {
             // 而非 mock 掉它——那会把「只搬不改」的证据换成一句桩。
             ActivityBucketAnalyzer(conversationDao, messageDao),
             clock,
+            ProactiveLaunchGate(launchGateSettings), // [zCODE] 中继3·项5(v2)：发射闸（默认关=现行为·下桩）
         )
         coEvery { settingsRepository.isCharacterNotificationEnabled(charId) } returns true
+        coEvery { launchGateSettings.proactiveGate() } returns
+            com.situ.aichat.morgans.NewsControlSettings.ProactiveGate(enabled = false) // 发射闸默认关=现行为
         coEvery { characterRepository.get(charId) } returns character()
         coEvery { conversationDao.getByCharacter(charId) } returns emptyList()
         coEvery { conversationDao.totalUnread() } returns 0

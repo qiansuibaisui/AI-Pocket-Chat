@@ -32,7 +32,14 @@ class DirectorRulesScanServiceTest {
     private val characterDao = mockk<CharacterDao>(relaxed = true)
     private val storyRepo = mockk<StoryStateRepository>(relaxed = true)
     private val newsPipeline = mockk<NewsPipelineService>(relaxed = true)
-    private val service = DirectorRulesScanService(storyStateDao, characterDao, storyRepo, newsPipeline)
+    private val controlSettings = mockk<com.situ.aichat.morgans.NewsControlSettings>(relaxed = true)
+    private val service = DirectorRulesScanService(storyStateDao, characterDao, storyRepo, newsPipeline, controlSettings)
+
+    /** 控制面默认桩（=DirectorRulesConfig 常量现值·拍板③默认态；relaxed 子 mock 的数值属性不可信故显式桩）。 */
+    private fun stubControlDefaults() {
+        coEvery { controlSettings.directorTuning() } returns com.situ.aichat.morgans.NewsControlSettings.DirectorTuning()
+        coEvery { controlSettings.userFleetKeyOverride() } returns ""
+    }
 
     private val now = 1_800_000_000_000L // 固定时点（概率闸种子同源判定用）
     private val zone = ZoneId.of("Asia/Shanghai")
@@ -91,17 +98,20 @@ class DirectorRulesScanServiceTest {
     // ── 在场排除（C 修正：代理只认线下见面·电话虫异地通话结构性不计入） ──
 
     @Test fun scan_aborts_fail_closed_when_no_recent_offline_meeting() = runTest {
+        stubControlDefaults()
         coEvery { storyStateDao.latestOfflineMeetingLedger() } returns null
         assertEquals("无代理→整轮放弃", 0, service.scanOnce(now, Random(1), zone))
         coVerify(exactly = 0) { characterDao.getAll() } // 连全库扫描都不启动
     }
 
     @Test fun scan_aborts_when_meeting_older_than_proxy_window() = runTest {
+        stubControlDefaults()
         coEvery { storyStateDao.latestOfflineMeetingLedger() } returns meetingRow("x", ageMs = 25L * 3600_000)
         assertEquals("代理超 24h→失效放弃", 0, service.scanOnce(now, Random(1), zone))
     }
 
     @Test fun proxy_comes_only_from_offline_meeting_source() = runTest {
+        stubControlDefaults()
         // 拍板C 结构性证据：代理唯一取材口=latestOfflineMeetingLedger（DAO source='offline_meeting' 过滤——
         // 电话虫/异地通话不写该源，代理不会漂到对方船上）
         coEvery { storyStateDao.latestOfflineMeetingLedger() } returns meetingRow("x", ageMs = 3600_000)
@@ -113,6 +123,7 @@ class DirectorRulesScanServiceTest {
     }
 
     @Test fun pair_with_user_co_located_is_rejected() = runTest {
+        stubControlDefaults()
         // 用户（代理=白团海域A）与 a 同位置 → (a,b) 非远方 → 不触发
         coEvery { storyStateDao.latestOfflineMeetingLedger() } returns meetingRow("x", ageMs = 3600_000)
         coEvery { storyStateDao.latestSnapshotFor("x") } returns anchor("x", seaArea = "海域A", motionText = "停靠")
@@ -126,8 +137,9 @@ class DirectorRulesScanServiceTest {
 
     // ── 四闸 + 触发 + 防广播 ──
 
-    /** 标准绿场：代理在异海域，a/b 同位置跨团，四闸全过（种子预演判定）。 */
+    /** 标准绿场：代理在异海域，a/b 同位置跨团，闸门全过（种子预演判定）。 */
     private fun greenField(seed: Int): Random {
+        stubControlDefaults()
         coEvery { storyStateDao.latestOfflineMeetingLedger() } returns meetingRow("x", ageMs = 3600_000)
         coEvery { storyStateDao.latestSnapshotFor("x") } returns anchor("x", seaArea = "东海", motionText = "停靠")
         coEvery { characterDao.getAll() } returns listOf(char("a-uuid", "艾斯"), char("b-uuid", "贝拉"))
@@ -141,11 +153,12 @@ class DirectorRulesScanServiceTest {
     }
 
     @Test fun trigger_fires_with_canonical_event_key_and_optional_news() = runTest {
+        stubControlDefaults()
         val seed = 7
-        // 种子预演：与 service 内同序消费 nextDouble（概率闸→报道闸）→ 断言与随机序列一致而非硬编码
+        // 种子预演：与 service 内同序消费 nextDouble（概率闸→模板挑选）——掷点后 publish 恒递交
+        //（中继3·项1：择机概率收编 publish 单口=controlSettings 桩默认 30%·B9 侧掷点已移除）
         val probe = Random(seed)
         val willFire = probe.nextDouble() < DirectorRulesConfig.TRIGGER_PROBABILITY
-        val willReport = probe.nextDouble() < DirectorRulesConfig.NEWS_REPORT_PROBABILITY
         val fired = service.scanOnce(now, Random(seed), zone)
         assertEquals(if (willFire) 1 else 0, fired)
         if (willFire) {
@@ -153,8 +166,8 @@ class DirectorRulesScanServiceTest {
             val expectedKey = service.eventKeyOf(pairKey, now, zone)
             coVerify(exactly = 1) { storyRepo.applyDirectorEvent(listOf("a-uuid", "b-uuid"), any(), any(), any(), expectedKey, any(), any()) }
             assertTrue(expectedKey.startsWith("dir-r:") && expectedKey.contains(":20270115")) // pairKey 排序由 pairKeyOf 唯一定义
-            coVerify(exactly = if (willReport) 1 else 0) {
-                newsPipeline.publish(any<NewsEventDraft>(), listOf("a-uuid", "b-uuid"), any())
+            coVerify(exactly = 1) {
+                newsPipeline.publish(any<NewsEventDraft>(), listOf("a-uuid", "b-uuid"), any(), any())
             }
         }
     }

@@ -36,6 +36,8 @@ import javax.inject.Singleton
 class NewsPipelineService @Inject constructor(
     private val dao: NewsPipelineDao,
     private val storyStateDao: StoryStateDao,
+    private val characterDao: com.situ.aichat.data.local.dao.CharacterDao, // [zCODE] 中继3·项2：跨团扇出扩面
+    private val controlSettings: NewsControlSettings, // [zCODE] 中继3·项1/3/4：C10 控制面（每源开关+概率/压级/知情名单）
 ) {
 
     // ── 传播延迟常量表（中继 1 定值·中继 2 接入计算） ──
@@ -48,6 +50,9 @@ class NewsPipelineService @Inject constructor(
 
     /** 无风带隔离（新闻鸟不到·不注入）。 */
     val CALM_BELT_BLOCKED = true
+
+    /** [zCODE] 中继3·项3：零知晓压级哨值（手动配置 detailOverride=-1 → fanOut 全静默）。 */
+    val EVENT_SILENCE = -1
 
     /**
      * 发布新闻事件（唯一入口·P4/P5 预留）：生成条目 → 对不在场角色扇出触达记录。
@@ -62,7 +67,21 @@ class NewsPipelineService @Inject constructor(
         draft: NewsEventDraft,
         participants: List<String>,
         nowMillis: Long = System.currentTimeMillis(),
+        random: kotlin.random.Random = kotlin.random.Random.Default,
     ): String? = withContext(Dispatchers.IO) {
+        // [zCODE] 中继3·项1（拍板③：每源独立开关+概率·判定权收编本口·默认=现行为）：
+        // meeting_end 默认 开/1.0=每次必报；director_rules 默认 开/0.30=B9 原 30%（B9 侧自有掷点已移除，
+        // 概率唯一执行点=此处）。开关关/概率不过 → 不落条目不扇出（幂等预检之后、插条之前，零残留）。
+        val trigger = runCatching { controlSettings.triggerFor(draft.sourceRaw) }
+            .getOrDefault(NewsControlSettings.SourceTrigger())
+        if (!trigger.enabled) {
+            Log.d(TAG, "新闻源已关（C10 控制面），跳过 source=${draft.sourceRaw}")
+            return@withContext null
+        }
+        if (random.nextDouble() >= trigger.probability) {
+            Log.d(TAG, "新闻源概率未过（C10 控制面 ${trigger.probability}），跳过 source=${draft.sourceRaw}")
+            return@withContext null
+        }
         // 幂等预检
         if (dao.eventExistsBySource(draft.sourceRaw, draft.sourceRefUuid)) {
             Log.d(TAG, "新闻条目幂等命中，跳过 sourceRef=${draft.sourceRefUuid.take(12)}")
@@ -92,33 +111,46 @@ class NewsPipelineService @Inject constructor(
 
     /**
      * 对不在场角色扇出触达（转述层落库）。
-     * 亲历者排除（金样 7 防重叠）；全库角色遍历（MVP——中继 2 按距离/团过滤）。
+     * [zCODE] 中继3·项2（问二教训修复）：扩面=**全角色**按 [calculateDeliveryPlan] 距离档投递——
+     * 目标团/目标锚点**实参真传**（原实现恒传 target==event fleet 致二三档生产不可达）；亲历者与事件主角排除。
+     * [zCODE] 中继3·项3/4：单事件手动配置（压级+知情名单·同 blob）——
+     * 优先级 **手动 > 闸门(severity floor) > 默认(距离档)**；detailOverride=-1 零知晓=全静默（覆盖 allowList）。
      */
     private suspend fun fanOut(event: NewsEventEntity, participants: List<String>, nowMillis: Long) {
-        // MVP：同团成员=短延迟触达、其他=长延迟触达；中继 2 将精确到海域计算
-        // 本中继简化：全部立即触达（deliveredAt=now），中继 2 接入延迟后改为 now+delay
-        val fleetKey = storyStateDao.fleetKeyOfCharacter(event.characterUuid)
-        val fleetMates = fleetKey?.let { storyStateDao.membersOfFleet(it) } ?: emptyList<StoryFleetMemberEntity>()
-
-        // [zCODE] 中继 2·延迟三态+衰减精确化：
-        // 同团不同船/同海域 → 短延迟 6h + 详版(level 2)
-        // 跨海域/跨团 → 长延迟 24h + 概述(level 1)
-        // 无风带 → 新闻鸟不到·不注入
-        for (mate in fleetMates) {
-            if (mate.characterUuid in participants) continue
-            val plan = calculateDeliveryPlan(
-                targetFleetKey = fleetKey,
-                eventFleetKey = fleetKey,
-                eventLocationKey = event.locationKey,
-            )
-            if (plan == null) continue // 无风带/阻断
-            insertDelivery(event, mate.characterUuid, nowMillis + plan.delayMs, plan.detailLevel, nowMillis)
+        val override = runCatching { controlSettings.eventOverrideFor(event.sourceRefUuid) }.getOrNull()
+        if (override?.detailOverride == EVENT_SILENCE) {
+            Log.i(TAG, "新闻扇出：零知晓压级（C10 手动）event=${event.sourceRefUuid.take(12)}——全静默")
+            return
         }
-        Log.d(TAG, "新闻扇出: event=${event.uuid.take(8)} 同团触达=${fleetMates.size - participants.size} 人")
+        val severity = com.situ.aichat.data.local.entity.NewsSeverity.fromRaw(event.severityRaw)
+        val eventFleetKey = storyStateDao.fleetKeyOfCharacter(event.characterUuid)
+        val allCharacters = runCatching { characterDao.getAll() }.getOrDefault(emptyList())
+        var delivered = 0
+        for (target in allCharacters) {
+            if (target.uuid == event.characterUuid || target.uuid in participants) continue // 亲历链不走新闻
+            // 项4 知情名单：手动指定后仅名单内获知（覆盖默认判定）
+            if (override != null && override.allowList.isNotEmpty() && target.uuid !in override.allowList) continue
+            val targetFleetKey = runCatching { storyStateDao.fleetKeyOfCharacter(target.uuid) }.getOrNull()
+            val targetLocationKey = runCatching { storyStateDao.latestSnapshotFor(target.uuid) }
+                .getOrNull()?.locationRaw?.takeIf { it.isNotBlank() }
+            val plan = calculateDeliveryPlan(
+                targetFleetKey = targetFleetKey,
+                eventFleetKey = eventFleetKey,
+                eventLocationKey = event.locationKey,
+                targetLocationKey = targetLocationKey,
+                severity = severity,
+            ) ?: continue // 无风带/阻断
+            // 项3 优先级落点：手动压级 > severity floor（floor 在 plan 内）> 默认距离档
+            val detailLevel = override?.detailOverride?.takeIf { it >= 0 } ?: plan.detailLevel
+            insertDelivery(event, target.uuid, nowMillis + plan.delayMs, detailLevel, nowMillis)
+            delivered++
+        }
+        Log.d(TAG, "新闻扇出: event=${event.uuid.take(8)} 触达=${delivered} 人（全角色面·距离档）")
     }
 
     /**
      * [zCODE] 中继 2·延迟+衰减计算（纯函数·金样 2/3）：按目标与事件的舰队/海域关系三态判定。
+     * [zCODE] 中继3·项3：severity 联动——MAJOR 事件 detailLevel 下限=1（最低概述级；NORMAL 照旧距离档）。
      *
      * @return null = 阻断（无风带）；非 null = DeliveryPlan(delayMs, detailLevel)
      */
@@ -127,6 +159,8 @@ class NewsPipelineService @Inject constructor(
         eventFleetKey: String?,
         eventLocationKey: String,
         targetLocationKey: String? = null,
+        severity: com.situ.aichat.data.local.entity.NewsSeverity =
+            com.situ.aichat.data.local.entity.NewsSeverity.NORMAL,
     ): DeliveryPlan? {
         // 无风带：新闻鸟不到→不注入（事件地或目标地在无风带均阻断）
         val calmBeltDomains = listOf("九蛇岛", "亚马逊百合")
@@ -134,7 +168,7 @@ class NewsPipelineService @Inject constructor(
         val targetDomain = targetLocationKey?.let { AnchorVocabulary.normalizeIslandTop(it) }
         if (eventDomain in calmBeltDomains || targetDomain in calmBeltDomains) return null
 
-        return when {
+        val base = when {
             // 同团（不同船）→ 短延迟+详版
             targetFleetKey != null && targetFleetKey == eventFleetKey ->
                 DeliveryPlan(SHORT_DELAY_MS, detailLevel = 2)
@@ -144,6 +178,10 @@ class NewsPipelineService @Inject constructor(
             // 跨海域/跨团 → 长延迟+模糊
             else -> DeliveryPlan(LONG_DELAY_MS, detailLevel = 0)
         }
+        // 项3：MAJOR → 最低概述级（细节不外流，只许"听说出了大事"）
+        return if (severity == com.situ.aichat.data.local.entity.NewsSeverity.MAJOR && base.detailLevel < 1) {
+            base.copy(detailLevel = 1)
+        } else base
     }
 
     /** 延迟+衰减计算结果。 */

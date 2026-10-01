@@ -53,6 +53,7 @@ class NotificationScheduler @Inject constructor(
     private val learningService: NotificationLearningService,
     private val activityBucketAnalyzer: ActivityBucketAnalyzer,
     private val clock: Clock,
+    private val launchGate: ProactiveLaunchGate, // [zCODE] 中继3·项5(v2)：C11 发射前硬闸门（禁令一/人设槽位/情报 bypass）
 ) {
 
     // MARK: - 公共入口
@@ -171,6 +172,17 @@ class NotificationScheduler @Inject constructor(
         val charId = character.uuid
         // 每角色开关（默认开）。关 → 撤销并清快照（重新开启时会重建）。
         if (!settingsRepository.isCharacterNotificationEnabled(charId)) {
+            cancelCharacter(charId)
+            store.clearSnapshot(charId)
+            return
+        }
+
+        // [zCODE] 中继3·项5(v2)·C11 发射闸单点：排程即发射预约——闸死排程=发射不可能。
+        // 判定 fail-open（设置读取异常不阻既有调度）；拦截时撤销既有预约（陌生卡此前已排的也撤）。
+        val gateDecision = runCatching { launchGate.canLaunch(character) }
+            .getOrDefault(ProactiveLaunchGate.Decision(true, "闸门读取异常 fail-open"))
+        if (!gateDecision.allowed) {
+            Log.i(TAG, "发射闸拦截: ${character.name} reason=${gateDecision.reason}")
             cancelCharacter(charId)
             store.clearSnapshot(charId)
             return

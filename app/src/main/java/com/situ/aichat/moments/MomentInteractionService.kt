@@ -72,6 +72,7 @@ class MomentInteractionService @Inject constructor(
     private val scheduleDao: ScheduleDao,
     private val conversationDao: ConversationDao,
     private val storyStateRepository: com.situ.aichat.data.repository.StoryStateRepository, // [zCODE] P1·第2项 读取处3
+    private val cognitionGate: MomentCognitionGate, // [zCODE] 中继3·项5(v2) 禁令二：单向知晓不得朋友圈互动
 ) {
 
     /**
@@ -108,10 +109,15 @@ class MomentInteractionService @Inject constructor(
         val availableCandidates = candidates.filterNot { OfflineMeetingGate.characterInMeeting(conversationDao, it.uuid) }
         if (availableCandidates.isEmpty()) return
 
+        // [zCODE] 中继3·项5(v2)·禁令二：认知层级闸（B6/F2 病灶拦截）——角色动态须 ≥ 双向知晓才可互动
+        //（单向知晓/陌生人禁点赞评论·认知边界三.②；用户动态不拦=质感评分既有管辖）。被拦者不入睡眠待互动队列。
+        val cognitionOkCandidates = availableCandidates.filter { cognitionGate.interactionAllowed(it.uuid, post.characterUuid) }
+        if (cognitionOkCandidates.isEmpty()) return
+
         // 睡着的角色入待互动队列（仅日程系统开启时），醒后由前台恢复补处理（7.2.5）。
         val awakeCandidates: List<CharacterEntity> = if (settings.scheduleSystemEnabled) {
             val awake = mutableListOf<CharacterEntity>()
-            for (candidate in availableCandidates) {
+            for (candidate in cognitionOkCandidates) {
                 if (sleepChecker.isSleeping(candidate.uuid, scheduleSystemEnabled = true, nowMillis, zone)) {
                     MomentPendingInteractionStore.add(
                         context = context,

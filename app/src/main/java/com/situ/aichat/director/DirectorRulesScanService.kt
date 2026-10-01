@@ -38,6 +38,7 @@ class DirectorRulesScanService @Inject constructor(
     private val characterDao: CharacterDao,
     private val storyRepo: StoryStateRepository,
     private val newsPipeline: NewsPipelineService,
+    private val controlSettings: com.situ.aichat.morgans.NewsControlSettings, // [zCODE] 中继3·项1：参数位迁 DataStore（默认=常量现值）
 ) {
 
     /** 同位置坐标（双层口径的归一产物）。 */
@@ -79,31 +80,38 @@ class DirectorRulesScanService @Inject constructor(
         "dir-r:$pairKey:" + DateTimeFormatter.ofPattern("yyyyMMdd").withZone(zone).format(Instant.ofEpochMilli(nowMillis))
 
     /**
-     * 用户位置代理（拍板C 修正版）：USER_FLEET_KEY_OVERRIDE 非空 → 该团成员最新锚点；
+     * 用户位置代理（拍板C 修正版）：userFleetKeyOverride 设置非空 → 该团成员最新锚点；
      * 否则最近一次 **OFFLINE_MEETING** 记账行（DAO source 过滤=只认线下见面，电话虫等异地通话结构性不计入）
-     * → 该角色当前锚点。代理锚点须 ≤[DirectorRulesConfig.PROXY_MAX_AGE_MS]，否则 null（fail-closed）。
+     * → 该角色当前锚点。代理锚点须 ≤proxyMaxAgeMs（DataStore 调参·默认常量），否则 null（fail-closed）。
      */
     suspend fun userProxyAnchor(nowMillis: Long): StoryAnchorSnapshotEntity? {
-        if (DirectorRulesConfig.USER_FLEET_KEY_OVERRIDE.isNotBlank()) {
-            val member = storyStateDao.membersOfFleet(DirectorRulesConfig.USER_FLEET_KEY_OVERRIDE).firstOrNull() ?: return null
+        val tuning = runCatching { controlSettings.directorTuning() }
+            .getOrDefault(com.situ.aichat.morgans.NewsControlSettings.DirectorTuning())
+        val overrideFleet = runCatching { controlSettings.userFleetKeyOverride() }.getOrDefault("")
+        if (overrideFleet.isNotBlank()) {
+            val member = storyStateDao.membersOfFleet(overrideFleet).firstOrNull() ?: return null
             return storyStateDao.latestSnapshotFor(member.characterUuid)
-                ?.takeIf { nowMillis - it.effectiveAt <= DirectorRulesConfig.PROXY_MAX_AGE_MS }
+                ?.takeIf { nowMillis - it.effectiveAt <= tuning.proxyMaxAgeMs }
         }
         val meeting = storyStateDao.latestOfflineMeetingLedger() ?: return null
-        if (nowMillis - meeting.completedAt > DirectorRulesConfig.PROXY_MAX_AGE_MS) return null
+        if (nowMillis - meeting.completedAt > tuning.proxyMaxAgeMs) return null
         return storyStateDao.latestSnapshotFor(meeting.characterUuid)
-            ?.takeIf { nowMillis - it.effectiveAt <= DirectorRulesConfig.PROXY_MAX_AGE_MS }
+            ?.takeIf { nowMillis - it.effectiveAt <= tuning.proxyMaxAgeMs }
     }
 
     /**
      * 一轮扫描（Worker 每 [DirectorRulesConfig.SCAN_INTERVAL_MS] 调一次）。返回触发的相遇事件数。
      * [random] 注入式（金样确定性：种子控制概率闸与模板挑选）。
+     * 判定参数（触发概率/日上限/单对冷却）经 [com.situ.aichat.morgans.NewsControlSettings] 读 DataStore
+     * （C10 控制面·默认=DirectorRulesConfig 常量现值）；**择机报道概率已收编 publish 单口**（B9 侧掷点移除）。
      */
     suspend fun scanOnce(
         nowMillis: Long = System.currentTimeMillis(),
         random: Random = Random.Default,
         zone: ZoneId = ZoneId.systemDefault(),
     ): Int = withContext(Dispatchers.IO) {
+        val tuning = runCatching { controlSettings.directorTuning() }
+            .getOrDefault(com.situ.aichat.morgans.NewsControlSettings.DirectorTuning())
         val proxy = userProxyAnchor(nowMillis)
         if (proxy == null) {
             Log.i(TAG, "B9 扫描放弃：用户位置代理失效（无近期线下见面/超24h）——fail-closed 不赌远方")
@@ -136,14 +144,14 @@ class DirectorRulesScanService @Inject constructor(
         val dayStart = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
         var fired = 0
         for ((a, b, loc) in candidates) {
-            if (fired >= DirectorRulesConfig.DAILY_CAP) break
-            if (runCatching { storyStateDao.directorRulesEventCountSince(dayStart) }.getOrDefault(0) >= DirectorRulesConfig.DAILY_CAP) break
+            if (fired >= tuning.dailyCap) break
+            if (runCatching { storyStateDao.directorRulesEventCountSince(dayStart) }.getOrDefault(0) >= tuning.dailyCap) break
             val pairKey = pairKeyOf(a, b)
             val cooldownHit = runCatching {
-                storyStateDao.ledgerCountByKeyPrefixSince("dir-r:$pairKey:%", nowMillis - DirectorRulesConfig.PAIR_COOLDOWN_MS)
+                storyStateDao.ledgerCountByKeyPrefixSince("dir-r:$pairKey:%", nowMillis - tuning.pairCooldownMs)
             }.getOrDefault(0) > 0
             if (cooldownHit) continue
-            if (random.nextDouble() >= DirectorRulesConfig.TRIGGER_PROBABILITY) continue
+            if (random.nextDouble() >= tuning.triggerProbability) continue
             val eventKey = eventKeyOf(pairKey, nowMillis, zone)
             val description = encounterSentence(random, a.name, b.name, loc)
             runCatching {
@@ -159,22 +167,24 @@ class DirectorRulesScanService @Inject constructor(
             }.onFailure { Log.w(TAG, "B9 相遇落账失败（跳过该对）pair=$pairKey: ${it.message}") ; continue }
             fired++
             Log.i(TAG, "B9 远方相遇触发: $description（key=$eventKey）")
-            if (random.nextDouble() < DirectorRulesConfig.NEWS_REPORT_PROBABILITY) {
-                runCatching {
-                    newsPipeline.publish(
-                        NewsEventDraft(
-                            characterUuid = a.uuid,
-                            characterName = a.name,
-                            locationKey = loc,
-                            eventSummary = description,
-                            occurredAt = nowMillis,
-                            sourceRaw = NEWS_SOURCE,
-                            sourceRefUuid = eventKey,
-                        ),
-                        participants = listOf(a.uuid, b.uuid), // 亲历者排除=转报语义（不在场角色经延迟扇出获知）
-                    )
-                }.onFailure { Log.w(TAG, "B9 择机报道失败（不影响记账）: ${it.message}") }
-            }
+            // 择机报道：概率与开关收编 publish 单口（C10 控制面 director_rules 源·默认 开/30%）——
+            // B9 只管递交（participants=双方排除亲历者=转报语义），掷不掷点由控制台口径定。
+            runCatching {
+                newsPipeline.publish(
+                    NewsEventDraft(
+                        characterUuid = a.uuid,
+                        characterName = a.name,
+                        locationKey = loc,
+                        eventSummary = description,
+                        occurredAt = nowMillis,
+                        sourceRaw = NEWS_SOURCE,
+                        sourceRefUuid = eventKey,
+                    ),
+                    participants = listOf(a.uuid, b.uuid),
+                    nowMillis = nowMillis,
+                    random = random,
+                )
+            }.onFailure { Log.w(TAG, "B9 择机报道递交失败（不影响记账）: ${it.message}") }
         }
         fired
     }

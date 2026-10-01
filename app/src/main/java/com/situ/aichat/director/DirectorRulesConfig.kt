@@ -3,8 +3,8 @@ package com.situ.aichat.director
 /**
  * [zCODE] B9 规则档频率参数位（终审五数·2026-10-01 拍板照准：6h/10%/日2/72h/报30%）。
  *
- * 本批=常量形态（管道级参数位）；C10 频率控制台收编时改为读设置存储——**只改本对象的取值来源**，
- * 调用面（[DirectorRulesScanService] 与 Worker 周期）零改。
+ * [zCODE] 中继3·项1 起：本对象常量=**DataStore 默认值**（生效值经 [com.situ.aichat.morgans.NewsControlSettings]
+ * 读取·C10 控制台可调·默认=现行为）；SCAN_INTERVAL_MS 为 WorkManager 排程结构参数（改值需重排任务）保持常量。
  */
 object DirectorRulesConfig {
 
