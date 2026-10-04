@@ -33,6 +33,7 @@ a98abc8  B组#5+#6（闸门双卡读料侧+在场一致性评估）
 dcce023  中继2收货观察②（B8 cast镜像改⚓信封——纯文本被消费端整条跳过）
 0a5e59d  中继3（C10控制面+fanOut跨团扩面+压级知情名单+发射闸/认知闸·六项全落）
 2093485  ZD-13修复（由头「TA 的日程」指称错绑→自指前缀+旧闹钟归一化+行为金样4例）
+3fb26ec  P6切片一（导演控制台：三段面板+双脸入口+确认弹窗+写入留痕+同worker扫描+P5预埋①枚举位）
 ```
 
 ### 包史
@@ -129,6 +130,10 @@ dcce023  中继2收货观察②（B8 cast镜像改⚓信封——纯文本被消
 | 主动消息接地 | `proactive/ProactiveAnchorGrounding.kt` | build+groundingFor |
 | ZD-13 由头自指 | `notification/ProactiveOccasionText.kt` | occasionForEvent 前缀「你自己的日程：」 |
 | ZD-13 旧由头归一化 | `prompt/notification/ProactiveMessageComposer.kt` | normalizeOccasionDeixis（composeUserPrompt 内调用） |
+| P6 导演控制台 VM | `ui/settings/DirectorConsoleViewModel.kt` | confirmPending 唯一写入口+DirectorConsoleAudit |
+| P6 导演控制台 UI | `ui/settings/DirectorConsoleScreen.kt` | 三段+确认弹窗（=审计三元组预览） |
+| P6 控制台接线 | `ui/AIChatApp.kt` | composable("directorConsole")+SettingsScreen 双脸入口 |
+| P6 最近导演事件 | `data/local/dao/StoryStateDao.kt` | recentDirectorLedger |
 | 防复读 | `prompt/AnchorInjectionBuilder.kt` | 【防复读】段 |
 
 ## ⑤ 待办与观察项
@@ -141,8 +146,9 @@ dcce023  中继2收货观察②（B8 cast镜像改⚓信封——纯文本被消
 | 全量回归（#1 后） | ✅ 一轮已跑（2026-10-01·Gradle 官方计数）：9244 例·失败 10·**全部存量红**（干净 HEAD 复跑同 10 例：StoryNarrativeInjectionTest 3 + ToolCallingPromptAssemblyGoldenTest 5 + OurDaysViewModelTest 1 + StoryShareCardRendererTest 1——环境性/基线陈旧·#1 新增 0 失败） | — |
 | **三合一大考包出包** | ✅ 出包完成（2026-10-01·双报SHA 见包史表）·待用户真机安装+MigrationTest 补跑 | #1+全量绿 |
 | B组后续（中继2/3） | **中继2 ✅ 闭合**；**中继3 ✅ 施工闭合（2026-10-02·六项全落：C10 控制面/fanOut 跨团扩面/压级+知情名单/发射闸+认知闸/项6——勘察回单 v2 补笔含施工记录）·待验收** | #1+真机复验 |
-| P5 群聊/P6 管理台/P7 地图 | 排队（P6 首切片为中继2/3 收货全绿后的勘察对象） | P4 全闭合 |
-| **下包时机** | ~~与 P6 首切片捆绑~~ → **五合包已提前出**（2026-10-04 业主询议拍板"现在出"：四合包未装即取代·ZD-13 复验随本包·见包史）；后续 P6 切片再按需出包 | ZD-13 |
+| P5 群聊/P7 地图 | 排队；**P5 预埋账四条已入册**（会话抽象纪律/B8 群聊三问/记忆互通=架构纪律非愿望/在场口径待定案——见 `docs/P6勘察单-管理台首切片.md` §五） | P4 全闭合 |
+| **P6 管理台切片一（导演控制台）** | **施工闭合+全量回归已过**（`3fb26ec`·2026-10-04·五拍板全默认案+留痕采纳——裁定与施工记录见 P6 勘察单 §五/§六/§七：三段面板+双脸入口+确认弹窗+写入留痕+金样 12+8；两轮全量 9299 例稳定红 9=基线存量·零新增确定性失败·游走红跨测污染挂账观察）·待真机 | 勘察单已裁 |
+| **下包时机** | ~~与 P6 首切片捆绑~~ → **五合包已提前出**（2026-10-04 业主询议拍板"现在出"：四合包未装即取代·ZD-13 复验随本包·见包史）；后续按切片进度出包 | ZD-13 |
 
 ### 真机验收待决项
 
