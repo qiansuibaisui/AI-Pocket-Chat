@@ -58,6 +58,7 @@ class LiuliSettingsContentTest {
         onOpenApiFunctions = tap("apiFunctions"),
         onOpenMemorySettings = tap("memorySettings"),
         onOpenSystemToggles = tap("systemToggles"),
+        onOpenDirectorConsole = tap("directorConsole"),
         onOpenAppearance = tap("appearance"),
         onOpenNotificationSettings = tap("notificationSettings"),
         onOpenImmersiveSettings = tap("immersiveSettings"),

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.situ.aichat.R
@@ -82,7 +83,8 @@ internal fun ColumnScope.systemGroup(
     val sys = stringResource(R.string.sys_settings_title)
     val sysSub = stringResource(R.string.sys_settings_entry_subtitle)
     val language = stringResource(R.string.settings_language)
-    if (!settingsMatches(term, notif, bg, bgSub, sys, sysSub, language)) return false
+    val directorConsole = "导演控制台"
+    if (!settingsMatches(term, notif, bg, bgSub, sys, sysSub, directorConsole, "摩根斯上报·B9 判定·主动消息发射闸", language)) return false
     LiuliGroup(header = stringResource(R.string.settings_group_system)) {
         LiuliNavRow(
             title = notif,
@@ -94,6 +96,8 @@ internal fun ColumnScope.systemGroup(
         )
         LiuliNavRow(title = bg, onClick = cb.onOpenBackgroundReliability, icon = Icons.Filled.Bolt, tileColor = LiuliPalette.tileSystem, subtitle = bgSub)
         LiuliNavRow(title = sys, onClick = cb.onOpenSystemToggles, icon = Icons.Filled.Tune, tileColor = LiuliPalette.tileSystem, subtitle = sysSub)
+        // [zCODE] P6 切片一：导演控制台（拍板①普通入口·双脸同位——release 可达）
+        LiuliNavRow(title = "导演控制台", onClick = cb.onOpenDirectorConsole, icon = Icons.Filled.Theaters, tileColor = LiuliPalette.tileSystem, subtitle = "摩根斯上报·B9 判定·主动消息发射闸")
         LiuliValueRow(
             title = language,
             value = liuliLangLabel(state.currentLangTag),

@@ -9,6 +9,7 @@ import com.situ.aichat.ui.settings.ApiConfigEditScreen
 import com.situ.aichat.ui.settings.ApiConfigScreen
 import com.situ.aichat.ui.settings.ApiFunctionAssignmentScreen
 import com.situ.aichat.ui.settings.BackgroundReliabilityScreen
+import com.situ.aichat.ui.settings.DirectorConsoleScreen
 import com.situ.aichat.ui.settings.KernelObservatoryScreen
 import com.situ.aichat.ui.settings.QrScanScreen
 import com.situ.aichat.ui.settings.StoryGlobalSettingsScreen
@@ -147,6 +148,15 @@ fun SkinnedSystemTogglesScreen(onBack: () -> Unit) {
         return
     }
     SystemTogglesScreen(onBack = onBack)
+}
+
+/**
+ * [zCODE] P6 切片一：导演控制台皮肤包装。**不做 Liuli 变体**——工程面板（业主自用·拍板①）
+ * 只保默认脸；若日后要皮肤适配另出变体，不在本切片范围。
+ */
+@Composable
+fun SkinnedDirectorConsoleScreen(onBack: () -> Unit) {
+    DirectorConsoleScreen(onBack = onBack)
 }
 
 @Composable

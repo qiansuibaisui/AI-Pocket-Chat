@@ -49,6 +49,7 @@ data class LiuliSettingsCallbacks(
     val onOpenApiFunctions: () -> Unit,
     val onOpenMemorySettings: () -> Unit,
     val onOpenSystemToggles: () -> Unit,
+    val onOpenDirectorConsole: () -> Unit,
     val onOpenAppearance: () -> Unit,
     val onOpenNotificationSettings: () -> Unit,
     val onOpenImmersiveSettings: () -> Unit,

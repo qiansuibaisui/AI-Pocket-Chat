@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Book
@@ -102,6 +103,7 @@ fun SettingsScreen(
     onOpenApiFunctions: () -> Unit,
     onOpenMemorySettings: () -> Unit,
     onOpenSystemToggles: () -> Unit,
+    onOpenDirectorConsole: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onOpenImmersiveSettings: () -> Unit,
@@ -253,6 +255,8 @@ fun SettingsScreen(
                 SettingsRow(Icons.Filled.Notifications, stringResource(R.string.notif_settings_title), value = onOffLabel(notifEnabled), onClick = onOpenNotificationSettings)
                 SettingsRow(Icons.Filled.Bolt, stringResource(R.string.bg_title), subtitle = stringResource(R.string.bg_entry_subtitle), onClick = onOpenBackgroundReliability)
                 SettingsRow(Icons.Filled.Tune, stringResource(R.string.sys_settings_title), subtitle = stringResource(R.string.sys_settings_entry_subtitle), onClick = onOpenSystemToggles)
+                // [zCODE] P6 切片一：导演控制台（拍板①普通入口·release 可达·B8/C10/C11 调参）
+                SettingsRow(Icons.Filled.Theaters, "导演控制台", subtitle = "摩根斯上报·B9 判定·主动消息发射闸", onClick = onOpenDirectorConsole)
                 SettingsRow(Icons.Filled.Language, stringResource(R.string.settings_language), value = langLabel(currentTag), onClick = { showLangDialog = true })
             }
 

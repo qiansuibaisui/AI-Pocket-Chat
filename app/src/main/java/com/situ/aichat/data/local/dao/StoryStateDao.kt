@@ -70,6 +70,13 @@ interface StoryStateDao {
     @Query("SELECT COUNT(*) FROM story_event_ledger WHERE eventKey LIKE :prefix AND completedAt >= :sinceMillis")
     suspend fun ledgerCountByKeyPrefixSince(prefix: String, sinceMillis: Long): Int
 
+    /** [zCODE] P6 切片一：导演台最近事件列表（dir-r: 相遇/dir-m: 文游·completedAt 倒序取 N）。 */
+    @Query(
+        "SELECT * FROM story_event_ledger WHERE eventKey LIKE 'dir-r:%' OR eventKey LIKE 'dir-m:%' " +
+            "ORDER BY completedAt DESC LIMIT :limit"
+    )
+    suspend fun recentDirectorLedger(limit: Int): List<StoryEventLedgerEntity>
+
     // ── 备份（13.6 全局段；整存整取） ──
 
     @Query("SELECT * FROM story_anchor_snapshots ORDER BY capturedAt ASC")

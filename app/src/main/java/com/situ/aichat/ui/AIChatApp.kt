@@ -119,6 +119,7 @@ import com.situ.aichat.ui.liuli.settings.SkinnedMemoryHubScreen
 import com.situ.aichat.ui.liuli.wallet.SkinnedRedeemCodeScreen
 import com.situ.aichat.ui.wallet.UserWalletScreen
 import com.situ.aichat.ui.liuli.settings.SkinnedSystemTogglesScreen
+import com.situ.aichat.ui.liuli.settings.SkinnedDirectorConsoleScreen
 import com.situ.aichat.ui.liuli.settings.SkinnedApiFunctionAssignmentScreen
 import com.situ.aichat.ui.liuli.settings.SkinnedBackgroundReliabilityScreen
 import com.situ.aichat.ui.settings.ReliabilityPromptDialog
@@ -764,6 +765,7 @@ fun AIChatApp(
                     onOpenApiFunctions = { navController.navigate("apiFunctions") },
                     onOpenMemorySettings = { navController.navigate("memorySettings") },
                     onOpenSystemToggles = { navController.navigate("systemToggles") },
+                    onOpenDirectorConsole = { navController.navigate("directorConsole") },
                     onOpenAppearance = { navController.navigate("appearance") },
                     onOpenNotificationSettings = { navController.navigate("notificationSettings") },
                     onOpenImmersiveSettings = { navController.navigate("immersiveSettings") },
@@ -862,6 +864,10 @@ fun AIChatApp(
             }
             composable("systemToggles") {
                 SkinnedSystemTogglesScreen(onBack = { navController.popBackStack() })
+            }
+            // [zCODE] P6 切片一：导演控制台（拍板①设置页普通入口·release 可达）。
+            composable("directorConsole") {
+                SkinnedDirectorConsoleScreen(onBack = { navController.popBackStack() })
             }
             composable("growthSettings") {
                 SkinnedGrowthSettingsScreen(

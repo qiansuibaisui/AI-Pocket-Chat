@@ -33,5 +33,8 @@ class DirectorRulesScanWorker @AssistedInject constructor(
     companion object {
         const val TAG = "DirectorRulesScanWorker"
         const val UNIQUE_PERIODIC = "director_rules_scan_periodic"
+
+        /** [zCODE] P6 切片一：导演台「立即扫描」一次性任务键（拍板④：同 worker 代码路径·REPLACE 可重复点）。 */
+        const val UNIQUE_MANUAL = "director_rules_scan_manual"
     }
 }
