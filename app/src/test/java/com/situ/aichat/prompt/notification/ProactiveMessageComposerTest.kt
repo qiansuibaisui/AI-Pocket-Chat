@@ -189,19 +189,40 @@ class ProactiveMessageComposerTest {
             weatherInfo = "☀️晴，12~23°C",
             recentSnippet = "阿远：今天好累\n林深：早点休息",
             memory = StructuredMemory(insideJoke = "咖啡梗", comfortStyle = "先听完再说"),
-            occasion = "TA 的日程：[18:00-19:00] 画稿收尾",
+            occasion = "你自己的日程：[18:00-19:00] 画稿收尾",
         )
         val stateIdx = prompt.indexOf("你们已经2天没说话了。")
         val weatherIdx = prompt.indexOf("今天天气：☀️晴，12~23°C")
         val snippetIdx = prompt.indexOf("最近聊过：\n阿远：今天好累")
         val memoryIdx = prompt.indexOf("你们的梗：咖啡梗")
-        val occasionIdx = prompt.indexOf("你现在想说话的由头：TA 的日程：[18:00-19:00] 画稿收尾")
+        val occasionIdx = prompt.indexOf("你现在想说话的由头：你自己的日程：[18:00-19:00] 画稿收尾")
         // 五段俱在且按 §3.6 顺序
         assertTrue(stateIdx >= 0 && weatherIdx > stateIdx && snippetIdx > weatherIdx)
         assertTrue(memoryIdx > snippetIdx && occasionIdx > memoryIdx)
         // 由头段的收束指令逐字
         assertTrue(prompt.contains("围绕这个由头，结合上面的状态和最近聊过的内容，自然地说一句。"))
         assertTrue(prompt.contains("你的安慰方式：先听完再说"))
+    }
+
+    /**
+     * ZD-13 行为金样：旧排程烤进闹钟的「TA 的日程：」由头在本框架里「TA」会错绑到收件人
+     * （真机实锤：角色把自己日程的行为说成 user 干的）——断言**渲染出的提示词行为**：
+     * 旧由头一律被改写为角色自指前缀，可错绑的「TA 的日程」字样在成品提示词中绝迹。
+     */
+    @Test fun userPrompt_legacyTaScheduleOccasion_healedToSelfDeixis() {
+        val healed = ProactiveMessageComposer.composeUserPrompt(
+            state = state(phase = ConversationPhase.NORMAL, days = 2),
+            weatherInfo = null,
+            recentSnippet = null,
+            memory = StructuredMemory(),
+            occasion = "TA 的日程：[19:00-22:00] 全船宴席（在甲板，心情🔥尽兴）",
+        )
+        assertTrue("旧由头归一为角色自指", healed.contains("你现在想说话的由头：你自己的日程：[19:00-22:00] 全船宴席（在甲板，心情🔥尽兴）"))
+        assertFalse("可错绑收件人的「TA 的日程」在成品提示词中绝迹", healed.contains("TA 的日程"))
+
+        // 非「TA 的日程」前缀的由头（回退支/兜底）原样通过，不受归一化波及
+        val passthrough = ProactiveMessageComposer.normalizeOccasionDeixis("早安问候")
+        assertEquals("早安问候", passthrough)
     }
 
     @Test fun userPrompt_noWeatherNoSnippetNoMemory_keepsStateAndOccasionOnly() {

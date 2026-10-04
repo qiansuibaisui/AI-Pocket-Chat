@@ -171,8 +171,16 @@ class ProactiveMessageComposer @Inject constructor(
             recentSnippet?.let { add("最近聊过：\n$it") }
             val memoryText = composeStructuredMemory(memory)
             if (memoryText.isNotEmpty()) add(memoryText)
-            add("你现在想说话的由头：$occasion\n围绕这个由头，结合上面的状态和最近聊过的内容，自然地说一句。")
+            add("你现在想说话的由头：${normalizeOccasionDeixis(occasion)}\n围绕这个由头，结合上面的状态和最近聊过的内容，自然地说一句。")
         }.filter { it.isNotEmpty() }.joinToString("\n\n")
+
+        /**
+         * ZD-13 指称归一：旧排程烤进闹钟的「TA 的日程：」由头在本框架（你是{角色}，给{user}发消息）里
+         * 「TA」会错绑到收件人——真机实锤为角色把自己日程的行为说成 user 干的。到点侧统一改写为
+         * 角色自指前缀，升级后旧闹钟由头即愈；新生成由头（[ProactiveOccasionText]）已是自指格式、原样通过。
+         */
+        internal fun normalizeOccasionDeixis(occasion: String): String =
+            if (occasion.startsWith("TA 的日程：")) "你自己的日程：${occasion.removePrefix("TA 的日程：")}" else occasion
 
         /**
          * 状态段（§3.6 逐字锁定模板）。`{X}` = 距上次说话小时数（整数除法）；`{dPhrase}` = 距最后一条用户消息的

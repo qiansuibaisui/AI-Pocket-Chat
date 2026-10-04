@@ -16,8 +16,14 @@ import java.time.format.DateTimeFormatter
 object ProactiveOccasionText {
 
     /**
-     * 日程支由头（图纸 §3.1 锁定格式）：`TA 的日程：[HH:mm-HH:mm] 活动（在地点，心情🙂描述，内心想：独白）`。
+     * 日程支由头：`你自己的日程：[HH:mm-HH:mm] 活动（在地点，心情🙂描述，内心想：独白）`。
      * 非空字段才出对应逗号段；三段全空则只留时段与活动。纯函数（internal 供单测）。
+     *
+     * ZD-13（2026-10-04 真机实锤）：原图纸 §3.1 锁定前缀「TA 的日程：」在到点侧框架
+     * 「你是{角色}，给{user}发一条消息」里，代词「TA」被模型错绑到**收件人**——角色把自己的
+     * 日程行为归因给 user（艾斯宴席反咬「刚才看着你说得那么香，怎么不叫我一起」）。
+     * 前缀改角色自指「你自己的日程：」（框架内「你」恒=角色，绑不上别人）；图纸 §3.1 同步改。
+     * 旧排程已烤进闹钟的「TA 的日程：」由头由 [ProactiveMessageComposer] 侧归一化兜住。
      */
     internal fun occasionForEvent(event: ScheduleEventEntity, zone: ZoneId): String {
         val formatter = DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
@@ -29,7 +35,7 @@ object ProactiveOccasionText {
             if (!event.innerThought.isNullOrEmpty()) add("内心想：${event.innerThought}")
         }
         val suffix = if (details.isEmpty()) "" else "（${details.joinToString("，")}）"
-        return "TA 的日程：[$start-$end] ${event.activity}$suffix"
+        return "你自己的日程：[$start-$end] ${event.activity}$suffix"
     }
 
     /** 回退支由头（图纸 §3.1 锁定文案）。纯函数（internal 供单测）。 */
